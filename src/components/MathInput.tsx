@@ -32,7 +32,10 @@ const KEYS: Array<{ label: string; insert: string; title: string }> = [
   { label: 'lim', insert: 'limit of | as x -> 0', title: 'Limit' },
 ]
 
-export const MathInput = forwardRef<MathInputHandle, Props>(function MathInput({ value, onChange, onSubmit, busy }, ref) {
+export const MathInput = forwardRef<MathInputHandle, Props>(function MathInput(
+  { value, onChange, onSubmit, busy },
+  ref,
+) {
   const inputRef = useRef<HTMLInputElement>(null)
   useImperativeHandle(ref, () => ({ focus: () => inputRef.current?.focus() }))
 

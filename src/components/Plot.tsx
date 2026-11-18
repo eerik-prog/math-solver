@@ -73,7 +73,6 @@ export function Plot({ spec }: { spec: PlotSpec }) {
 
   const [view, setView] = useState<View>(initial)
   const [hover, setHover] = useState<number | null>(null)
-  useEffect(() => setView(initial), [initial])
 
   const svgRef = useRef<SVGSVGElement>(null)
   const drag = useRef<{ px: number; py: number; view: View } | null>(null)
@@ -116,7 +115,12 @@ export function Plot({ spec }: { spec: PlotSpec }) {
       setView((v) => {
         const cx = v.x0 + fx * (v.x1 - v.x0)
         const cy = v.y1 - fy * (v.y1 - v.y0)
-        return { x0: cx + (v.x0 - cx) * k, x1: cx + (v.x1 - cx) * k, y0: cy + (v.y0 - cy) * k, y1: cy + (v.y1 - cy) * k }
+        return {
+          x0: cx + (v.x0 - cx) * k,
+          x1: cx + (v.x1 - cx) * k,
+          y0: cy + (v.y0 - cy) * k,
+          y1: cy + (v.y1 - cy) * k,
+        }
       })
     }
     el.addEventListener('wheel', onWheel, { passive: false })
@@ -217,7 +221,13 @@ export function Plot({ spec }: { spec: PlotSpec }) {
         )}
         {yTicks.map((t) =>
           Math.abs(t) < yStep / 1e6 ? null : (
-            <text key={`ty${t}`} className="tick" x={Math.min(Math.max(axisX - 6, 30), W - 4)} y={sy(t) + 4} textAnchor="end">
+            <text
+              key={`ty${t}`}
+              className="tick"
+              x={Math.min(Math.max(axisX - 6, 30), W - 4)}
+              y={sy(t) + 4}
+              textAnchor="end"
+            >
               {fmtTick(t, yStep)}
             </text>
           ),
@@ -238,7 +248,9 @@ export function Plot({ spec }: { spec: PlotSpec }) {
         {hover !== null && (
           <g className="hover">
             <line x1={sx(hover)} x2={sx(hover)} y1={0} y2={H} />
-            {hoverValues.map((v, i) => (Number.isFinite(v) ? <circle key={i} className={`c${i}`} cx={sx(hover)} cy={sy(v)} r={4} /> : null))}
+            {hoverValues.map((v, i) =>
+              Number.isFinite(v) ? <circle key={i} className={`c${i}`} cx={sx(hover)} cy={sy(v)} r={4} /> : null,
+            )}
           </g>
         )}
       </svg>
@@ -246,13 +258,21 @@ export function Plot({ spec }: { spec: PlotSpec }) {
         {hover === null
           ? 'Drag to pan, scroll or use the buttons to zoom.'
           : `${spec.variable} = ${hover.toPrecision(4)}` +
-            hoverValues.map((v, i) => `  ·  ${spec.fns[i].label}: ${Number.isFinite(v) ? v.toPrecision(4) : 'undefined'}`).join('')}
+            hoverValues
+              .map((v, i) => `  ·  ${spec.fns[i].label}: ${Number.isFinite(v) ? v.toPrecision(4) : 'undefined'}`)
+              .join('')}
       </figcaption>
     </figure>
   )
 }
 
-function shadePath(f: (x: number) => number, [a, b]: [number, number], v: View, sx: (x: number) => number, sy: (y: number) => number): string {
+function shadePath(
+  f: (x: number) => number,
+  [a, b]: [number, number],
+  v: View,
+  sx: (x: number) => number,
+  sy: (y: number) => number,
+): string {
   const lo = Math.max(Math.min(a, b), v.x0)
   const hi = Math.min(Math.max(a, b), v.x1)
   if (hi <= lo) return ''

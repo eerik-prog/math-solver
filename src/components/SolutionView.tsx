@@ -93,7 +93,12 @@ export function SolutionView({ solution, ms }: { solution: Solution; ms: number 
         <section className="card" aria-labelledby="steps-title">
           <div className="section-head">
             <h2 id="steps-title">Step-by-step</h2>
-            <button type="button" className="ghost small" onClick={() => setShowSteps((v) => !v)} aria-expanded={showSteps}>
+            <button
+              type="button"
+              className="ghost small"
+              onClick={() => setShowSteps((v) => !v)}
+              aria-expanded={showSteps}
+            >
               {showSteps ? 'Hide' : 'Show'}
             </button>
           </div>
@@ -110,7 +115,7 @@ export function SolutionView({ solution, ms }: { solution: Solution; ms: number 
       {solution.plot && (
         <section className="card" aria-labelledby="graph-title">
           <h2 id="graph-title">Graph</h2>
-          <Plot spec={solution.plot} />
+          <Plot key={JSON.stringify(solution.plot)} spec={solution.plot} />
         </section>
       )}
     </article>

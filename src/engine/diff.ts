@@ -1,18 +1,4 @@
-import {
-  type Expr,
-  ONE,
-  ZERO,
-  add,
-  contains,
-  div,
-  fn,
-  frac,
-  isSym,
-  mul,
-  neg,
-  pow,
-  sub,
-} from './expr'
+import { type Expr, ONE, ZERO, add, contains, div, fn, frac, isSym, mul, neg, pow, sub } from './expr'
 import { toTex } from './print'
 import { MathError } from './rational'
 import { simplest, simplify } from './simplify'
@@ -253,4 +239,3 @@ export function nthDerivative(e: Expr, x: string, n: number, steps: Step[]): Exp
 export function ordinal(k: number): string {
   return ['', 'First', 'Second', 'Third', 'Fourth', 'Fifth'][k] ?? `${k}th`
 }
-

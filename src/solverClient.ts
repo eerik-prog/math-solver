@@ -42,7 +42,10 @@ export class SolverClient {
     const worker = this.ensureWorker()
     const id = this.nextId++
     return new Promise((resolve) => {
-      const timer = setTimeout(() => this.reset('This problem took too long to solve. Try simplifying it or splitting it into parts.'), TIMEOUT_MS)
+      const timer = setTimeout(
+        () => this.reset('This problem took too long to solve. Try simplifying it or splitting it into parts.'),
+        TIMEOUT_MS,
+      )
       this.pending.set(id, { resolve, timer })
       worker.postMessage({ id, input })
     })

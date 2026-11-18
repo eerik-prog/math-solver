@@ -72,9 +72,7 @@ const KNOWN_WORDS = [...Object.keys(FUNCTIONS), ...Object.keys(CONSTANT_NAMES), 
 const INVERSE_TRIG: Record<string, string> = { sin: 'asin', cos: 'acos', tan: 'atan' }
 
 type Token =
-  | { t: 'num'; v: string; pos: number }
-  | { t: 'id'; v: string; pos: number }
-  | { t: 'op'; v: string; pos: number }
+  { t: 'num'; v: string; pos: number } | { t: 'id'; v: string; pos: number } | { t: 'op'; v: string; pos: number }
 
 const SUPERSCRIPTS: Record<string, string> = {
   '⁰': '0',
@@ -151,6 +149,9 @@ function tokenize(src: string): Token[] {
 /** "xsin" -> x, sin; "pix" -> pi, x; "abc" -> a, b, c. */
 function splitWord(word: string, pos: number): Token[] {
   const lower = word.toLowerCase()
+  if (word.length >= 3 && !KNOWN_WORDS.some((w) => w.length >= 2 && lower.includes(w))) {
+    throw new MathError(`I don't know the word "${word}". To multiply variables, write ${word.split('').join('*')}`)
+  }
   const out: Token[] = []
   let i = 0
   while (i < word.length) {
@@ -433,6 +434,7 @@ export function splitRelation(src: string): { lhs: string; op: RelOp; rhs: strin
       start = i + 1
     }
   }
+  if (depth > 0) throw new MathError('Missing closing parenthesis ")"')
   if (ops.length === 0) return null
   parts.push(s.slice(start))
   if (parts.some((p) => p.trim() === '')) throw new MathError('Each side of the equation needs something on it')

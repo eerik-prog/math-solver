@@ -2,7 +2,6 @@ import {
   type Expr,
   type Fn,
   CONSTANTS,
-  E,
   contains,
   I,
   ONE,
@@ -129,8 +128,8 @@ export function compareTerms(a: Expr, b: Expr): number {
   const ib = contains(b, 'i') ? 1 : 0
   if (ia !== ib) return ia - ib
   // (1 − √5) rather than (−√5 + 1): plain numbers lead in purely numeric sums
-  if (a.kind === 'num' && isNumericRadical(b)) return -1
-  if (b.kind === 'num' && isNumericRadical(a)) return 1
+  if (a.kind === 'num' && b.kind !== 'num') return isNumericRadical(b) ? -1 : 1
+  if (b.kind === 'num' && a.kind !== 'num') return isNumericRadical(a) ? 1 : -1
   const sa = splitCoef(a)[0].sign()
   const sb = splitCoef(b)[0].sign()
   if (sa !== sb && da === 0 && freeSymbols(a).size > 0 && freeSymbols(b).size > 0) return sb - sa
@@ -462,7 +461,7 @@ export function isNonNegative(e: Expr): boolean {
     case 'pow':
       return isEvenInteger(e.exp) || isNonNegative(e.base) || (e.base.kind === 'num' && e.base.value.sign() > 0)
     case 'fn':
-      return e.name === 'abs' || e.name === 'cosh' || (e.name === 'factorial')
+      return e.name === 'abs' || e.name === 'cosh' || e.name === 'factorial'
   }
 }
 
@@ -671,5 +670,3 @@ export function simplest(e: Expr): Expr {
     return s
   }
 }
-
-export { E, PI }

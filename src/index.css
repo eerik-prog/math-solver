@@ -696,6 +696,18 @@ main {
   .problem-input {
     font-size: 1rem;
   }
+  .answer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 4px 12px 10px;
+  }
+  .answer > button {
+    align-self: flex-end;
+  }
+  .answer-math {
+    font-size: 1rem;
+  }
   .primary {
     padding: 0 14px;
   }
@@ -706,4 +718,7 @@ main {
     scroll-behavior: auto !important;
   }
 }
-.tex-fallback { opacity: 0.6; background: none; }
+.tex-fallback {
+  opacity: 0.6;
+  background: none;
+}

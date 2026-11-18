@@ -17,10 +17,12 @@ export function tidy(e: Expr): Expr {
     case 'mul': {
       const fs: Expr[] = []
       for (const f of e.factors.map(tidy)) fs.push(...(f.kind === 'mul' ? f.factors : [f]))
-      if (fs.length === 2 && fs[0].kind === 'num' && fs[0].value.eq(Rational.MINUS_ONE) && fs[1].kind === 'num') return num(fs[1].value.neg())
+      if (fs.length === 2 && fs[0].kind === 'num' && fs[0].value.eq(Rational.MINUS_ONE) && fs[1].kind === 'num')
+        return num(fs[1].value.neg())
       // keep a single numeric coefficient in front: 2·x·3 → 6x is a change, so only move a lone number
       const nums = fs.filter((f) => f.kind === 'num')
-      if (nums.length === 1 && fs[0].kind !== 'num') return { kind: 'mul', factors: [nums[0], ...fs.filter((f) => f !== nums[0])] }
+      if (nums.length === 1 && fs[0].kind !== 'num')
+        return { kind: 'mul', factors: [nums[0], ...fs.filter((f) => f !== nums[0])] }
       return { kind: 'mul', factors: fs }
     }
     case 'pow':
@@ -61,7 +63,13 @@ export function polyFactoredTex(p: Poly, x: string): { tex: string; text: string
     return f.mult > 1 ? `${base}^${f.mult}` : base
   })
   const cTex = content.isOne() ? '' : content.eq(Rational.MINUS_ONE) ? '-' : toTex(num(content))
-  const cText = content.isOne() ? '' : content.eq(Rational.MINUS_ONE) ? '-' : content.isInteger() ? content.toString() : `(${content})`
+  const cText = content.isOne()
+    ? ''
+    : content.eq(Rational.MINUS_ONE)
+      ? '-'
+      : content.isInteger()
+        ? content.toString()
+        : `(${content})`
   const trivial = nonConst.length <= 1 && (nonConst[0]?.mult ?? 1) === 1 && (content.isOne() || nonConst.length === 0)
   return { tex: cTex + texParts.join(''), text: cText + textParts.join(''), trivial }
 }
@@ -91,18 +99,33 @@ export function simplifyProblem(input: Expr): Solution {
       const fullDen = rf.den
       ratFromExpr(e, x, dens)
       const excluded: Rational[] = []
-      for (const d of dens) for (const r of rationalRoots(d).roots) if (!excluded.some((v) => v.eq(r.value))) excluded.push(r.value)
+      for (const d of dens)
+        for (const r of rationalRoots(d).roots) if (!excluded.some((v) => v.eq(r.value))) excluded.push(r.value)
       const result = simplify(mul(fullNum.toExpr(x), pow(fullDen.toExpr(x), -1)))
       const raw = simplify(e)
       if (key(raw) !== key(result)) {
-        steps.push({ title: 'Write as a single fraction, factor, and cancel common factors', tex: `${toTex(e)} = ${toTex(result)}` })
+        steps.push({
+          title: 'Write as a single fraction, factor, and cancel common factors',
+          tex: `${toTex(e)} = ${toTex(result)}`,
+        })
       }
       answers.push({ tex: toTex(result), text: toText(result) })
       const nf = polyFactoredTex(fullNum, x)
       const df = polyFactoredTex(fullDen, x)
       if (!nf.trivial || !df.trivial) notes.push(`Factored: (${nf.text}) / (${df.text})`)
-      if (excluded.length) notes.push(`Valid for ${excluded.map((v) => `${x} ≠ ${v}`).join(', ')} (the original expression is undefined there).`)
-      return { kind: 'simplify', title: 'Simplify', problemTex: toTex(e), answers, steps, notes, plot: functionPlot(result, x) }
+      if (excluded.length)
+        notes.push(
+          `Valid for ${excluded.map((v) => `${x} ≠ ${v}`).join(', ')} (the original expression is undefined there).`,
+        )
+      return {
+        kind: 'simplify',
+        title: 'Simplify',
+        problemTex: toTex(e),
+        answers,
+        steps,
+        notes,
+        plot: functionPlot(result, x),
+      }
     }
   }
 
@@ -120,17 +143,36 @@ export function simplifyProblem(input: Expr): Solution {
       if (!f.trivial) notes.push(`Factored form: ${f.text}`)
     }
   }
-  return { kind: 'simplify', title: 'Simplify', problemTex: toTex(e), answers, steps, notes, plot: functionPlot(best, x) }
+  return {
+    kind: 'simplify',
+    title: 'Simplify',
+    problemTex: toTex(e),
+    answers,
+    steps,
+    notes,
+    plot: functionPlot(best, x),
+  }
 }
 
 export function expandProblem(input: Expr): Solution {
   const e = tidy(input)
   const r = expand(e)
   const steps: Step[] = [
-    { title: 'Multiply out every product and power of sums (distributive law), then combine like terms', tex: `${toTex(e)} = ${toTex(r)}` },
+    {
+      title: 'Multiply out every product and power of sums (distributive law), then combine like terms',
+      tex: `${toTex(e)} = ${toTex(r)}`,
+    },
   ]
   const x = pickVariable(e)
-  return { kind: 'expand', title: 'Expand', problemTex: toTex(e), answers: [{ tex: toTex(r), text: toText(r) }], steps, notes: [], plot: functionPlot(r, x) }
+  return {
+    kind: 'expand',
+    title: 'Expand',
+    problemTex: toTex(e),
+    answers: [{ tex: toTex(r), text: toText(r) }],
+    steps,
+    notes: [],
+    plot: functionPlot(r, x),
+  }
 }
 
 export function factorProblem(input: Expr): Solution {
@@ -144,8 +186,14 @@ export function factorProblem(input: Expr): Solution {
     const f = primeFactors(n)
     if (!f) throw new MathError('That number is too large to factor here')
     if (n < 0n) notes.push('The sign is kept in front.')
-    const tex = f.length === 0 ? n.toString() : (n < 0n ? '-' : '') + f.map(([p, c]) => (c > 1 ? `${p}^{${c}}` : `${p}`)).join(' \\cdot ')
-    const text = f.length === 0 ? n.toString() : (n < 0n ? '-' : '') + f.map(([p, c]) => (c > 1 ? `${p}^${c}` : `${p}`)).join(' · ')
+    const tex =
+      f.length === 0
+        ? n.toString()
+        : (n < 0n ? '-' : '') + f.map(([p, c]) => (c > 1 ? `${p}^{${c}}` : `${p}`)).join(' \\cdot ')
+    const text =
+      f.length === 0
+        ? n.toString()
+        : (n < 0n ? '-' : '') + f.map(([p, c]) => (c > 1 ? `${p}^${c}` : `${p}`)).join(' · ')
     let m = n < 0n ? -n : n
     for (const [p, c] of f)
       for (let i = 0; i < c; i++) {
@@ -153,7 +201,14 @@ export function factorProblem(input: Expr): Solution {
         m /= p
       }
     if (f.length === 1 && f[0][1] === 1) notes.push(`${n < 0n ? -n : n} is a prime number.`)
-    return { kind: 'factor', title: 'Prime factorization', problemTex: toTex(e), answers: [{ tex, text }], steps, notes }
+    return {
+      kind: 'factor',
+      title: 'Prime factorization',
+      problemTex: toTex(e),
+      answers: [{ tex, text }],
+      steps,
+      notes,
+    }
   }
   const x = pickVariable(s)
   const vars = freeSymbols(s)
@@ -163,14 +218,23 @@ export function factorProblem(input: Expr): Solution {
     if (p) {
       const f = polyFactoredTex(p, x)
       const { content } = factorPoly(p)
-      if (!content.isOne()) steps.push({ title: 'Factor out the greatest common factor', tex: `${toTex(ex)} = ${toTex(num(content))}\\left(${toTex(p.scale(content.inv()).toExpr(x))}\\right)` })
+      if (!content.isOne())
+        steps.push({
+          title: 'Factor out the greatest common factor',
+          tex: `${toTex(ex)} = ${toTex(num(content))}\\left(${toTex(p.scale(content.inv()).toExpr(x))}\\right)`,
+        })
       const { roots } = rationalRoots(p)
       if (roots.length)
         steps.push({
           title: `Find the roots (each root r gives a factor (${x} − r))`,
           tex: roots.map((r) => `${x} = ${toTex(num(r.value))}`).join(',\\quad '),
         })
-      steps.push({ title: f.trivial ? 'This polynomial cannot be factored further over the rational numbers' : 'Write the product of the factors', tex: `${toTex(ex)} = ${f.tex}` })
+      steps.push({
+        title: f.trivial
+          ? 'This polynomial cannot be factored further over the rational numbers'
+          : 'Write the product of the factors',
+        tex: `${toTex(ex)} = ${f.tex}`,
+      })
       return {
         kind: 'factor',
         title: 'Factor',
@@ -190,12 +254,13 @@ export function factorProblem(input: Expr): Solution {
   terms.forEach((t, i) => {
     const [c, rest] = splitCoef(t)
     g = gcd(g, c.n)
-    den = den * c.d / gcd(den, c.d)
+    den = (den * c.d) / gcd(den, c.d)
     const powers = new Map<string, Rational>()
     const fs = rest ? (rest.kind === 'mul' ? rest.factors : [rest]) : []
     for (const f of fs) {
       if (f.kind === 'sym') powers.set(f.name, Rational.ONE)
-      else if (f.kind === 'pow' && f.base.kind === 'sym' && f.exp.kind === 'num' && f.exp.value.sign() > 0) powers.set(f.base.name, f.exp.value)
+      else if (f.kind === 'pow' && f.base.kind === 'sym' && f.exp.kind === 'num' && f.exp.value.sign() > 0)
+        powers.set(f.base.name, f.exp.value)
     }
     if (i === 0) for (const [k, v] of powers) minPow.set(k, v)
     else
@@ -211,7 +276,14 @@ export function factorProblem(input: Expr): Solution {
   common = simplify(common)
   if (terms.length < 2 || (common.kind === 'num' && common.value.isOne())) {
     steps.push({ title: 'There is no common factor to take out' })
-    return { kind: 'factor', title: 'Factor', problemTex: toTex(e), answers: [{ tex: toTex(ex), text: toText(ex) }], steps, notes: ['Only common factors are extracted for expressions with several variables.'] }
+    return {
+      kind: 'factor',
+      title: 'Factor',
+      problemTex: toTex(e),
+      answers: [{ tex: toTex(ex), text: toText(ex) }],
+      steps,
+      notes: ['Only common factors are extracted for expressions with several variables.'],
+    }
   }
   const inner = simplify(add(...terms.map((t) => simplify(mul(t, pow(common, -1))))))
   const tex = `${toTex(common)}\\left(${toTex(inner)}\\right)`

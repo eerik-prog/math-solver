@@ -57,6 +57,4 @@ export interface Solution {
   plot?: PlotSpec
 }
 
-export type SolveResponse =
-  | { ok: true; solution: Solution; ms: number }
-  | { ok: false; error: string; ms: number }
+export type SolveResponse = { ok: true; solution: Solution; ms: number } | { ok: false; error: string; ms: number }

@@ -277,8 +277,7 @@ export function toText(e: Expr): string {
         else if (isNegative(t)) {
           const n = negateTerm(t)
           out += ' - ' + (n.kind === 'add' ? `(${toText(n)})` : toText(n))
-        }
-        else out += ' + ' + toText(t)
+        } else out += ' + ' + toText(t)
       })
       return out
     }
@@ -296,7 +295,12 @@ export function toText(e: Expr): string {
       let topStr = parts.join('*')
       if (c.n !== 1n || parts.length === 0) {
         const lead = c.n.toString()
-        topStr = parts.length === 0 ? lead : /^[a-z(]/i.test(parts[0]) && top[0].kind !== 'fn' ? lead + topStr : lead + '*' + topStr
+        topStr =
+          parts.length === 0
+            ? lead
+            : /^[a-z(]/i.test(parts[0]) && top[0].kind !== 'fn'
+              ? lead + topStr
+              : lead + '*' + topStr
       }
       const botParts = bottom.map(textFactor)
       if (c.d !== 1n) botParts.unshift(c.d.toString())
@@ -308,16 +312,22 @@ export function toText(e: Expr): string {
     case 'pow': {
       const { base, exp } = e
       if (exp.kind === 'num' && exp.value.sign() < 0) {
-        const p: Expr = exp.value.neg().isOne() ? base : { kind: 'pow', base, exp: { kind: 'num', value: exp.value.neg() } }
+        const p: Expr = exp.value.neg().isOne()
+          ? base
+          : { kind: 'pow', base, exp: { kind: 'num', value: exp.value.neg() } }
         return `1/${textFactor(p)}`
       }
       if (exp.kind === 'num' && exp.value.n === 1n && exp.value.d === 2n) return `sqrt(${toText(base)})`
-      const b = base.kind === 'sym' || (base.kind === 'num' && base.value.isInteger() && base.value.sign() >= 0) || base.kind === 'fn'
-        ? toText(base)
-        : `(${toText(base)})`
-      const x = exp.kind === 'sym' || (exp.kind === 'num' && exp.value.isInteger() && exp.value.sign() >= 0)
-        ? toText(exp)
-        : `(${toText(exp)})`
+      const b =
+        base.kind === 'sym' ||
+        (base.kind === 'num' && base.value.isInteger() && base.value.sign() >= 0) ||
+        base.kind === 'fn'
+          ? toText(base)
+          : `(${toText(base)})`
+      const x =
+        exp.kind === 'sym' || (exp.kind === 'num' && exp.value.isInteger() && exp.value.sign() >= 0)
+          ? toText(exp)
+          : `(${toText(exp)})`
       return `${b}^${x}`
     }
     case 'fn': {

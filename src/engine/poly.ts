@@ -392,6 +392,17 @@ export function factorPoly(p: Poly): { content: Rational; factors: { poly: Poly;
     remaining = found.rest
   }
   if (remaining.degree >= 1) factors.push({ poly: remaining, mult: 1 })
+  // Linear factors stay in root order; higher-degree ones go after, by degree then coefficients.
+  const cmpPoly = (a: Poly, b: Poly) => {
+    for (let i = 0; i <= a.degree; i++) {
+      const c = a.coef(i).cmp(b.coef(i))
+      if (c) return c
+    }
+    return 0
+  }
+  factors.sort((a, b) =>
+    a.poly.degree <= 1 && b.poly.degree <= 1 ? 0 : a.poly.degree - b.poly.degree || cmpPoly(a.poly, b.poly),
+  )
   // content correction: product of primitive factors may differ from prim by a constant
   let product = Poly.constant(1)
   for (const f of factors) product = product.mul(f.poly.pow(f.mult))

@@ -27,7 +27,8 @@ function prefold(e: Expr): Expr {
   }
 }
 
-const isRecip = (e: Expr) => e.kind === 'pow' && e.base.kind === 'num' && e.exp.kind === 'num' && e.exp.value.eq(Rational.MINUS_ONE)
+const isRecip = (e: Expr) =>
+  e.kind === 'pow' && e.base.kind === 'num' && e.exp.kind === 'num' && e.exp.value.eq(Rational.MINUS_ONE)
 
 /** Can the whole tree be evaluated exactly with rational arithmetic? */
 function isRationalTree(e: Expr): boolean {
@@ -63,7 +64,12 @@ function reduceOnce(e: Expr): Reduction | null {
         const [a, b] = e.terms.map((t) => (t.kind === 'num' ? t.value : Rational.ZERO))
         const v = e.terms.reduce((s, t) => s.add((t as { value: Rational }).value), Rational.ZERO)
         const subtract = e.terms.length === 2 && b.sign() < 0
-        return { e: num(v), title: subtract ? `Subtract: ${a} − ${b.neg()} = ${v}` : `Add: ${e.terms.map((t) => toText(t)).join(' + ')} = ${v}` }
+        return {
+          e: num(v),
+          title: subtract
+            ? `Subtract: ${a} − ${b.neg()} = ${v}`
+            : `Add: ${e.terms.map((t) => toText(t)).join(' + ')} = ${v}`,
+        }
       }
       break
     case 'mul':
@@ -78,7 +84,9 @@ function reduceOnce(e: Expr): Reduction | null {
             division = true
           }
         }
-        const parts = e.factors.map((f) => (f.kind === 'pow' ? toText(f.base) : f.kind === 'num' && f.value.sign() < 0 ? `(${toText(f)})` : toText(f)))
+        const parts = e.factors.map((f) =>
+          f.kind === 'pow' ? toText(f.base) : f.kind === 'num' && f.value.sign() < 0 ? `(${toText(f)})` : toText(f),
+        )
         const desc = division ? `Divide: ${parts[0]} ÷ ${parts.slice(1).join(' ÷ ')}` : `Multiply: ${parts.join(' × ')}`
         return { e: num(v), title: `${desc} = ${v}` }
       }
@@ -99,7 +107,16 @@ function reduceOnce(e: Expr): Reduction | null {
     default:
       return null
   }
-  const kids = e.kind === 'add' ? e.terms : e.kind === 'mul' ? e.factors : e.kind === 'pow' ? [e.base, e.exp] : e.kind === 'fn' ? e.args : []
+  const kids =
+    e.kind === 'add'
+      ? e.terms
+      : e.kind === 'mul'
+        ? e.factors
+        : e.kind === 'pow'
+          ? [e.base, e.exp]
+          : e.kind === 'fn'
+            ? e.args
+            : []
   for (let i = 0; i < kids.length; i++) {
     // a reciprocal inside a product is reduced together with the product
     if (e.kind === 'mul' && isRecip(kids[i])) continue
@@ -122,7 +139,15 @@ function reduceOnce(e: Expr): Reduction | null {
 }
 
 function fnName(n: string): string {
-  return { factorial: 'the factorial', gcd: 'the greatest common divisor', lcm: 'the least common multiple', mod: 'the remainder', abs: 'the absolute value' }[n] ?? n
+  return (
+    {
+      factorial: 'the factorial',
+      gcd: 'the greatest common divisor',
+      lcm: 'the least common multiple',
+      mod: 'the remainder',
+      abs: 'the absolute value',
+    }[n] ?? n
+  )
 }
 
 export function evaluateProblem(input: Expr): Solution {
@@ -140,7 +165,11 @@ export function evaluateProblem(input: Expr): Solution {
       all.push({ title: r.title, tex: toTex(cur) })
     }
     result = simplify(cur)
-    if (all.length > 40) steps.push({ title: `Work through the ${all.length} operations in order (parentheses, powers, × ÷, + −)`, substeps: all })
+    if (all.length > 40)
+      steps.push({
+        title: `Work through the ${all.length} operations in order (parentheses, powers, × ÷, + −)`,
+        substeps: all,
+      })
     else steps.push(...all)
     if (cur.kind === 'num' && !cur.value.isInteger()) {
       steps.push({ title: 'The result as a fraction in lowest terms', tex: toTex(cur) })

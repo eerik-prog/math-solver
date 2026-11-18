@@ -103,14 +103,25 @@ export default function App() {
           </span>
           Math Solver
         </a>
-        <button type="button" className="ghost small" onClick={cycleTheme} aria-label={`Theme: ${theme}. Click to change.`}>
+        <button
+          type="button"
+          className="ghost small"
+          onClick={cycleTheme}
+          aria-label={`Theme: ${theme}. Click to change.`}
+        >
           {theme === 'system' ? 'Auto theme' : theme === 'dark' ? 'Dark' : 'Light'}
         </button>
       </header>
 
       <main>
         <h1 className="sr-only">Math Solver</h1>
-        <MathInput ref={inputRef} value={input} onChange={setInput} onSubmit={() => void run(input, true)} busy={busy} />
+        <MathInput
+          ref={inputRef}
+          value={input}
+          onChange={setInput}
+          onSubmit={() => void run(input, true)}
+          busy={busy}
+        />
 
         <div aria-live="polite" className="result-region">
           {response && !response.ok && input.trim() && (
@@ -155,27 +166,37 @@ export default function App() {
             </summary>
             <ul>
               <li>
-                Powers with <code>^</code>: <code>x^2</code>, <code>2^(x+1)</code>. Multiplication can be implied: <code>3x</code>, <code>2(x+1)</code>, <code>x sin x</code>.
+                Powers with <code>^</code>: <code>x^2</code>, <code>2^(x+1)</code>. Multiplication can be implied:{' '}
+                <code>3x</code>, <code>2(x+1)</code>, <code>x sin x</code>.
               </li>
               <li>
-                Functions: <code>sqrt</code>, <code>sin cos tan</code>, <code>asin acos atan</code>, <code>ln</code> (natural log), <code>log</code> (base 10), <code>log_2(x)</code>, <code>abs</code> or <code>|x|</code>, <code>n!</code>.
+                Functions: <code>sqrt</code>, <code>sin cos tan</code>, <code>asin acos atan</code>, <code>ln</code>{' '}
+                (natural log), <code>log</code> (base 10), <code>log_2(x)</code>, <code>abs</code> or <code>|x|</code>,{' '}
+                <code>n!</code>.
               </li>
               <li>
-                Constants: <code>pi</code>, <code>e</code>, <code>infinity</code>. Degrees: <code>sin(30°)</code>. Percent: <code>15% * 80</code>.
+                Constants: <code>pi</code>, <code>e</code>, <code>infinity</code>. Degrees: <code>sin(30°)</code>.
+                Percent: <code>15% * 80</code>.
               </li>
               <li>
-                Commands: <code>solve …</code>, <code>simplify …</code>, <code>expand …</code>, <code>factor …</code>, <code>derivative of …</code>, <code>d/dx …</code>, <code>integrate … dx</code>, <code>integrate … from a to b</code>, <code>limit of … as x -&gt; a</code>.
+                Commands: <code>solve …</code>, <code>simplify …</code>, <code>expand …</code>, <code>factor …</code>,{' '}
+                <code>derivative of …</code>, <code>d/dx …</code>, <code>integrate … dx</code>,{' '}
+                <code>integrate … from a to b</code>, <code>limit of … as x -&gt; a</code>.
               </li>
               <li>
                 Systems: separate equations with a comma, semicolon or “and”: <code>x + y = 5, x - y = 1</code>.
               </li>
-              <li>Use a dot for decimals: <code>2.5</code>.</li>
+              <li>
+                Use a dot for decimals: <code>2.5</code>.
+              </li>
             </ul>
           </details>
         </section>
       </main>
 
-      <footer className="footer">Everything runs in your browser. Exact answers where possible, decimals when not.</footer>
+      <footer className="footer">
+        Everything runs in your browser. Exact answers where possible, decimals when not.
+      </footer>
     </div>
   )
 }

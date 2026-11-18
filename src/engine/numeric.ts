@@ -174,7 +174,12 @@ export function findRealRoots(f: (x: number) => number, lo = -100, hi = 100, sam
       else if (pf * fx < 0) {
         const r = bisect(f, px, x, pf, fx)
         if (r !== null) push(r)
-      } else if (Number.isFinite(ppf) && Math.abs(pf) < Math.abs(ppf) && Math.abs(pf) <= Math.abs(fx) && Math.abs(pf) < 1e-3) {
+      } else if (
+        Number.isFinite(ppf) &&
+        Math.abs(pf) < Math.abs(ppf) &&
+        Math.abs(pf) <= Math.abs(fx) &&
+        Math.abs(pf) < 1e-3
+      ) {
         // local minimum of |f| close to zero: golden-section search on |f|
         const r = minimizeAbs(f, px - h, x)
         if (Math.abs(f(r)) < 1e-10) push(r)
@@ -205,16 +210,28 @@ function minimizeAbs(f: (x: number) => number, a: number, b: number): number {
 export function integrateNumeric(f: (x: number) => number, a: number, b: number): { value: number; error: number } {
   if (a === b) return { value: 0, error: 0 }
   if (!Number.isFinite(a) || !Number.isFinite(b)) {
-    // map infinite ranges with x = t / (1 - t^2)
-    const g = (t: number) => {
-      const x = t / (1 - t * t)
-      const dx = (1 + t * t) / ((1 - t * t) * (1 - t * t))
-      return f(x) * dx
+    if (a > b) {
+      const r = integrateNumeric(f, b, a)
+      return { value: -r.value, error: r.error }
     }
-    const ta = a === -Infinity ? -1 : Number.isFinite(a) ? solveT(a) : 1
-    const tb = b === Infinity ? 1 : Number.isFinite(b) ? solveT(b) : -1
-    const eps = 1e-9
-    return integrateNumeric(g, ta + (ta === -1 ? eps : 0), tb - (tb === 1 ? eps : 0))
+    if (a === -Infinity && b === Infinity) {
+      const l = integrateNumeric(f, -Infinity, 0)
+      const r = integrateNumeric(f, 0, Infinity)
+      return { value: l.value + r.value, error: l.error + r.error }
+    }
+    // x = a + t/(1 − t) maps [0, 1) onto [a, ∞); the Gauss nodes never touch t = 1.
+    const g =
+      b === Infinity
+        ? (t: number) => f(a + t / (1 - t)) / ((1 - t) * (1 - t))
+        : (t: number) => f(b - t / (1 - t)) / ((1 - t) * (1 - t))
+    return integrateNumeric(
+      (t) => {
+        const v = g(t)
+        return Number.isFinite(v) ? v : 0
+      },
+      0,
+      1,
+    )
   }
   let total = 0
   let err = 0
@@ -236,21 +253,13 @@ export function integrateNumeric(f: (x: number) => number, a: number, b: number)
   return { value: total, error: err }
 }
 
-function solveT(x: number): number {
-  // inverse of x = t / (1 - t^2) on (-1, 1)
-  if (x === 0) return 0
-  return (-1 + Math.sqrt(1 + 4 * x * x)) / (2 * x)
-}
-
 const XGK = [
-  0.9914553711208126, 0.9491079123427585, 0.8648644233597691,
-  0.7415311855993945, 0.5860872354676911, 0.4058451513773972,
-  0.20778495500789848, 0,
+  0.9914553711208126, 0.9491079123427585, 0.8648644233597691, 0.7415311855993945, 0.5860872354676911,
+  0.4058451513773972, 0.20778495500789848, 0,
 ]
 const WGK = [
-  0.022935322010529224, 0.06309209262997856, 0.10479001032225019,
-  0.14065325971552592, 0.1690047266392679, 0.19035057806478542,
-  0.20443294007529889, 0.20948214108472782,
+  0.022935322010529224, 0.06309209262997856, 0.10479001032225019, 0.14065325971552592, 0.1690047266392679,
+  0.19035057806478542, 0.20443294007529889, 0.20948214108472782,
 ]
 const WG = [0.1294849661688697, 0.27970539148927664, 0.3818300505051189, 0.4179591836734694]
 

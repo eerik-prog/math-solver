@@ -1,5 +1,5 @@
 import { evaluateProblem } from './arithmetic'
-import { expandProblem, factorProblem, functionPlot, pickVariable, simplifyProblem, tidy } from './algebra'
+import { expandProblem, factorProblem, pickVariable, simplifyProblem, tidy } from './algebra'
 import { nthDerivative, ordinal } from './diff'
 import { type Expr, INF, add, contains, freeSymbols, mul, neg, num, substitute } from './expr'
 import { identify } from './identify'
@@ -16,6 +16,29 @@ import { solveSystem } from './systems'
 import type { Answer, Solution, SolveResponse, Step } from './types'
 
 export type { Solution, SolveResponse, Step, Answer } from './types'
+
+const EXAMPLE_FOR: Record<string, string> = {
+  solve: 'solve 2x + 3 = 7',
+  find: 'find x: x^2 = 9',
+  simplify: 'simplify (x^2 - 1)/(x - 1)',
+  expand: 'expand (x + 1)^2',
+  factor: 'factor x^2 - 5x + 6',
+  factorise: 'factor x^2 - 5x + 6',
+  factorize: 'factor x^2 - 5x + 6',
+  integrate: 'integrate x^2 dx',
+  integral: 'integral of x^2 from 0 to 1',
+  int: 'integrate x^2 dx',
+  '∫': '∫ x^2 dx',
+  derivative: 'derivative of x^3',
+  differentiate: 'differentiate sin(x^2)',
+  'd/dx': 'd/dx x^3',
+  limit: 'limit of sin(x)/x as x -> 0',
+  lim: 'lim x->0 sin(x)/x',
+  evaluate: 'evaluate 2^10',
+  calculate: 'calculate 3/4 + 1/6',
+  compute: 'compute 12 * 7',
+  what: 'what is 15% * 80',
+}
 
 const WRT = String.raw`(?:\s+(?:with\s+respect\s+to|wrt|w\.r\.t\.?)\s+([a-zA-Z]))?`
 
@@ -73,7 +96,10 @@ function relationProblem(text: string, hint?: string): Solution {
     const s2: Step[] = []
     const i1 = inequalityIntervals(a, r1.op, mid, x, s1, notes)
     const i2 = inequalityIntervals(mid, r2.op, b, x, s2, notes)
-    steps.push({ title: `Split into two inequalities. First: ${toText(simplify(a))} ${r1.op} ${toText(simplify(mid))}`, substeps: s1 })
+    steps.push({
+      title: `Split into two inequalities. First: ${toText(simplify(a))} ${r1.op} ${toText(simplify(mid))}`,
+      substeps: s1,
+    })
     steps.push({ title: `Second: ${toText(simplify(mid))} ${r2.op} ${toText(simplify(b))}`, substeps: s2 })
     steps.push({ title: 'Both must hold, so take the overlap of the two solution sets' })
     const ivs = intersectIntervals(i1, i2)
@@ -111,7 +137,9 @@ function truthProblem(rel: Relation): Solution {
   const eps = 1e-12 * Math.max(1, Math.abs(lv), Math.abs(rv))
   const truth =
     rel.op === '='
-      ? d.kind === 'num' ? d.value.isZero() : Math.abs(lv - rv) <= eps
+      ? d.kind === 'num'
+        ? d.value.isZero()
+        : Math.abs(lv - rv) <= eps
       : rel.op === '<'
         ? lv < rv - eps
         : rel.op === '>'
@@ -141,7 +169,8 @@ function derivativeProblem(exprText: string, order: number, hint?: string): Solu
   const raw = simplify(e)
   if (order === 1) {
     const last = steps[steps.length - 1]
-    if (!last || !last.tex?.endsWith(toTex(res))) steps.push({ title: 'Simplify', tex: `${op}\\left[${toTex(raw)}\\right] = ${toTex(res)}` })
+    if (!last || !last.tex?.endsWith(toTex(res)))
+      steps.push({ title: 'Simplify', tex: `${op}\\left[${toTex(raw)}\\right] = ${toTex(res)}` })
   }
   const vars = freeSymbols(e)
   vars.delete(x)
@@ -158,7 +187,7 @@ function derivativeProblem(exprText: string, order: number, hint?: string): Solu
           variable: x,
           fns: [
             { expr: toText(raw), label: 'f' },
-            { expr: toText(res), label: order === 1 ? "f′" : `f^(${order})` },
+            { expr: toText(res), label: order === 1 ? 'f′' : `f^(${order})` },
           ],
           xRange: [-10, 10],
         },
@@ -280,19 +309,25 @@ function integralProblem(spec: IntegralSpec): Solution {
       if (Number.isFinite(v) && Math.abs(v - numeric.value) <= 1e-6 * Math.max(1, Math.abs(v))) {
         exact = val
         steps.push({
-          title: 'Apply the Fundamental Theorem of Calculus: evaluate the antiderivative at the upper bound minus the lower bound',
+          title:
+            'Apply the Fundamental Theorem of Calculus: evaluate the antiderivative at the upper bound minus the lower bound',
           tex: `\\left[${toTex(result.F)}\\right]_{${toTex(a)}}^{${toTex(b)}} = \\left(${toTex(Fb)}\\right) - \\left(${toTex(Fa)}\\right) = ${toTex(val)}`,
         })
       }
     }
   }
   if (!exact) {
-    if (singular) notes.push('The integrand is undefined somewhere in the interval, so this is an improper integral; the value below is a numerical estimate and may not exist.')
+    if (singular)
+      notes.push(
+        'The integrand is undefined somewhere in the interval, so this is an improper integral; the value below is a numerical estimate and may not exist.',
+      )
     if (!Number.isFinite(numeric.value) || numeric.error > 1e-3 * Math.max(1, Math.abs(numeric.value))) {
       notes.push('The numerical estimate did not converge well; the integral may diverge.')
     }
     steps.push({
-      title: result ? 'Evaluate numerically (adaptive Gauss–Kronrod quadrature)' : 'No elementary antiderivative was found, so evaluate numerically (adaptive Gauss–Kronrod quadrature)',
+      title: result
+        ? 'Evaluate numerically (adaptive Gauss–Kronrod quadrature)'
+        : 'No elementary antiderivative was found, so evaluate numerically (adaptive Gauss–Kronrod quadrature)',
       tex: `${problemTex} \\approx ${texNumber(numeric.value)}`,
     })
     exact = identify(numeric.value)
@@ -358,10 +393,23 @@ function limitProblem(body: string, x: string, approach: string): Solution {
 
 /** Interprets the typed problem and solves it. Throws MathError for invalid input. */
 export function solveText(raw: string): Solution {
-  let s = normalizeInput(raw).trim().replace(/[?.]+$/, '').trim()
+  let s = normalizeInput(raw)
+    .trim()
+    .replace(/[?.]+$/, '')
+    .trim()
   if (!s) throw new MathError('Type a math problem to get started')
   s = s.replace(/^(?:please\s+)?(?:can you\s+)?/i, '')
   let m: RegExpExecArray | null
+  if (
+    (m =
+      /^(solve|find|simplify|expand|factor|factorise|factorize|integrate|integral(?:\s+of)?|int|∫|derivative(?:\s+of)?|differentiate|d\/dx|limit(?:\s+of)?|lim|evaluate|calculate|compute|what\s+is)$/i.exec(
+        s,
+      ))
+  ) {
+    throw new MathError(
+      `Add a problem after "${m[1]}", for example: ${EXAMPLE_FOR[m[1].split(/\s/)[0].toLowerCase()] ?? `${m[1]} 2x + 3 = 7`}`,
+    )
+  }
 
   if ((m = /^(?:what\s+is|what's|calculate|compute|evaluate|eval)\s+(.+)$/i.exec(s))) {
     const inner = m[1]
@@ -371,28 +419,49 @@ export function solveText(raw: string): Solution {
   }
   if ((m = /^simplify\s+(.+)$/i.exec(s))) return simplifyProblem(parseExpression(m[1]))
   if ((m = /^(?:expand|multiply\s+out)\s+(.+)$/i.exec(s))) return expandProblem(parseExpression(m[1]))
-  if ((m = /^(?:factor|factorise|factorize|factorization\s+of|prime\s+factors\s+of)\s+(.+)$/i.exec(s))) return factorProblem(parseExpression(m[1]))
+  if ((m = /^(?:factor|factorise|factorize|factorization\s+of|prime\s+factors\s+of)\s+(.+)$/i.exec(s)))
+    return factorProblem(parseExpression(m[1]))
 
   // Derivatives
-  if ((m = new RegExp(String.raw`^(?:find\s+)?(?:the\s+)?(?:(first|second|third|fourth|1st|2nd|3rd|4th)\s+)?derivative\s+of\s+(.+?)${WRT}$`, 'i').exec(s))) {
-    const order = { first: 1, '1st': 1, second: 2, '2nd': 2, third: 3, '3rd': 3, fourth: 4, '4th': 4 }[(m[1] ?? 'first').toLowerCase()] ?? 1
+  if (
+    (m = new RegExp(
+      String.raw`^(?:find\s+)?(?:the\s+)?(?:(first|second|third|fourth|1st|2nd|3rd|4th)\s+)?derivative\s+of\s+(.+?)${WRT}$`,
+      'i',
+    ).exec(s))
+  ) {
+    const order =
+      { first: 1, '1st': 1, second: 2, '2nd': 2, third: 3, '3rd': 3, fourth: 4, '4th': 4 }[
+        (m[1] ?? 'first').toLowerCase()
+      ] ?? 1
     return derivativeProblem(m[2], order, m[3])
   }
-  if ((m = new RegExp(String.raw`^(?:differentiate|derive|diff)\s+(.+?)${WRT}$`, 'i').exec(s))) return derivativeProblem(m[1], 1, m[2])
-  if ((m = /^d\^?\(?(\d)\)?\s*\/\s*d([a-zA-Z])\^?\(?\d\)?\s*(.+)$/i.exec(s))) return derivativeProblem(stripBrackets(m[3]), Number(m[1]), m[2])
+  if ((m = new RegExp(String.raw`^(?:differentiate|derive|diff)\s+(.+?)${WRT}$`, 'i').exec(s)))
+    return derivativeProblem(m[1], 1, m[2])
+  if ((m = /^d\^?\(?(\d)\)?\s*\/\s*d([a-zA-Z])\^?\(?\d\)?\s*(.+)$/i.exec(s)))
+    return derivativeProblem(stripBrackets(m[3]), Number(m[1]), m[2])
   if ((m = /^d\s*\/\s*d([a-zA-Z])\s*(.+)$/i.exec(s))) return derivativeProblem(stripBrackets(m[2]), 1, m[1])
 
   // Integrals
-  if ((m = /^(?:find\s+)?(?:the\s+)?(?:definite\s+|indefinite\s+)?(?:integral|antiderivative)(?:\s+of)?\s*(.+)$/i.exec(s))) return integralProblem(parseIntegral(m[1]))
-  if ((m = /^(?:integrate|int|∫)\s*(.+)$/i.exec(s))) return integralProblem(parseIntegral(m[1]))
+  if (
+    (m = /^(?:find\s+)?(?:the\s+)?(?:definite\s+|indefinite\s+)?(?:integral|antiderivative)(?:\s+of)?\s*(.+)$/i.exec(s))
+  )
+    return integralProblem(parseIntegral(m[1]))
+  if ((m = /^(?:integrate\s*|int\s+|∫\s*)(.+)$/i.exec(s))) return integralProblem(parseIntegral(m[1]))
 
   // Limits
-  if ((m = /^(?:find\s+)?(?:the\s+)?(?:limit|lim)\s*(?:of\s+)?(.+?)\s+as\s+([a-zA-Z])\s*(?:->|→|approaches|goes\s+to|tends\s+to)\s*(.+)$/i.exec(s)))
+  if (
+    (m =
+      /^(?:find\s+)?(?:the\s+)?(?:limit|lim)\s*(?:of\s+)?(.+?)\s+as\s+([a-zA-Z])\s*(?:->|→|approaches|goes\s+to|tends\s+to)\s*(.+)$/i.exec(
+        s,
+      ))
+  )
     return limitProblem(m[1], m[2], m[3])
-  if ((m = /^lim(?:it)?\s*_?\s*[{(]?\s*([a-zA-Z])\s*(?:->|→)\s*([^\s})]+?)\s*[})]?\s+(.+)$/i.exec(s))) return limitProblem(m[3], m[1], m[2])
+  if ((m = /^lim(?:it)?\s*_?\s*[{(]?\s*([a-zA-Z])\s*(?:->|→)\s*([^\s})]+?)\s*[})]?\s+(.+)$/i.exec(s)))
+    return limitProblem(m[3], m[1], m[2])
 
   // Solve
-  if ((m = /^(?:solve|find)\s+(?:for\s+)?([a-zA-Z])\s*(?:if|when|where|:|,)\s*(.+)$/i.exec(s))) return relationProblem(m[2], m[1])
+  if ((m = /^(?:solve|find)\s+(?:for\s+)?([a-zA-Z])\s*(?:if|when|where|:|,)\s*(.+)$/i.exec(s)))
+    return relationProblem(m[2], m[1])
   if ((m = /^(?:solve|find)\s+(.+?)(?:\s*,?\s+for\s+([a-zA-Z]))?$/i.exec(s))) return relationProblem(m[1], m[2])
 
   if (splitRelation(s) || splitSystem(s)) return relationProblem(s)
@@ -403,7 +472,8 @@ export function solveText(raw: string): Solution {
 
 function stripBrackets(s: string): string {
   const t = s.trim()
-  if ((t.startsWith('[') && t.endsWith(']')) || (t.startsWith('(') && t.endsWith(')') && balanced(t.slice(1, -1)))) return t.slice(1, -1)
+  if ((t.startsWith('[') && t.endsWith(']')) || (t.startsWith('(') && t.endsWith(')') && balanced(t.slice(1, -1))))
+    return t.slice(1, -1)
   return t
 }
 
@@ -423,10 +493,13 @@ export function solve(input: string): SolveResponse {
     const solution = solveText(input)
     return { ok: true, solution, ms: performance.now() - start }
   } catch (err) {
-    const msg = err instanceof MathError ? err.message : err instanceof RangeError ? 'This problem is too complex to solve here' : 'Something went wrong while solving this problem'
+    const msg =
+      err instanceof MathError
+        ? err.message
+        : err instanceof RangeError
+          ? 'This problem is too complex to solve here'
+          : 'Something went wrong while solving this problem'
     if (!(err instanceof MathError)) console.error(err)
     return { ok: false, error: msg, ms: performance.now() - start }
   }
 }
-
-export { functionPlot }

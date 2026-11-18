@@ -47,7 +47,10 @@ function linearSystem(rows: Rational[][], vars: string[], problemTex: string): S
     const lhs = simplify(add(...r.slice(0, n).map((c, i) => mul(num(c), sym(vars[i])))))
     return `${toTex(lhs)} = ${toTex(num(r[n]))}`
   })
-  steps.push({ title: 'Write every equation in standard form (variables on the left, numbers on the right)', tex: `\\begin{aligned} ${standard.join(' \\\\ ')} \\end{aligned}` })
+  steps.push({
+    title: 'Write every equation in standard form (variables on the left, numbers on the right)',
+    tex: `\\begin{aligned} ${standard.join(' \\\\ ')} \\end{aligned}`,
+  })
   steps.push({ title: 'Write the augmented matrix', tex: matrixTex(rows, 1) })
   const { matrix, pivots, ops } = rref(rows, n, true)
   if (ops.length)
@@ -62,20 +65,32 @@ function linearSystem(rows: Rational[][], vars: string[], problemTex: string): S
     steps.push({ title: 'A row reads 0 = (nonzero number), which is impossible, so the system has no solution' })
     answers.push({ tex: '\\text{No solution (the equations are inconsistent)}', text: 'No solution' })
   } else if (pivots.length === n) {
-    steps.push({ title: 'Read off the solution', tex: vars.map((v, i) => `${v} = ${toTex(num(matrix[i][n]))}`).join(',\\quad ') })
+    steps.push({
+      title: 'Read off the solution',
+      tex: vars.map((v, i) => `${v} = ${toTex(num(matrix[i][n]))}`).join(',\\quad '),
+    })
     vars.forEach((v, i) => {
       const val = matrix[i][n]
-      answers.push({ tex: `${v} = ${toTex(num(val))}`, text: `${v} = ${val.toString()}`, approx: val.isInteger() ? undefined : formatNumber(val.toNumber()) })
+      answers.push({
+        tex: `${v} = ${toTex(num(val))}`,
+        text: `${v} = ${val.toString()}`,
+        approx: val.isInteger() ? undefined : formatNumber(val.toNumber()),
+      })
     })
   } else {
     const free = vars.filter((_, i) => !pivots.includes(i))
     const params = free.map((v) => sym(v))
-    steps.push({ title: `There are fewer independent equations than unknowns, so ${free.join(', ')} ${free.length > 1 ? 'are' : 'is'} free` })
+    steps.push({
+      title: `There are fewer independent equations than unknowns, so ${free.join(', ')} ${free.length > 1 ? 'are' : 'is'} free`,
+    })
     pivots.forEach((c, r) => {
-      const e = simplify(sub(num(matrix[r][n]), add(...free.map((fv) => mul(num(matrix[r][vars.indexOf(fv)]), sym(fv))))))
+      const e = simplify(
+        sub(num(matrix[r][n]), add(...free.map((fv) => mul(num(matrix[r][vars.indexOf(fv)]), sym(fv))))),
+      )
       answers.push({ tex: `${vars[c]} = ${toTex(e)}`, text: `${vars[c]} = ${toText(e)}` })
     })
-    for (const p of params) answers.push({ tex: `${p.name} \\in \\mathbb{R}\\ \\text{(free)}`, text: `${p.name} is any real number` })
+    for (const p of params)
+      answers.push({ tex: `${p.name} \\in \\mathbb{R}\\ \\text{(free)}`, text: `${p.name} is any real number` })
     notes.push('The system has infinitely many solutions.')
   }
   return { kind: 'system', title: `Solve the system for ${vars.join(', ')}`, problemTex, answers, steps, notes }
@@ -112,17 +127,30 @@ function substitutionSystem(diffs: Expr[], vars: string[], problemTex: string): 
         const vv = simplify(substitute(expr, w, wv))
         const sol = `${v} = ${toTex(vv)},\\ ${w} = ${toTex(wv)}`
         pairs.push(sol)
-        const ordered = vars[0] === v ? `${v} = ${toTex(vv)},\\ ${w} = ${toTex(wv)}` : `${w} = ${toTex(wv)},\\ ${v} = ${toTex(vv)}`
+        const ordered =
+          vars[0] === v ? `${v} = ${toTex(vv)},\\ ${w} = ${toTex(wv)}` : `${w} = ${toTex(wv)},\\ ${v} = ${toTex(vv)}`
         const approxV = evalNum(vv)
         answers.push({
           tex: ordered,
-          text: vars[0] === v ? `${v} = ${toText(vv)}, ${w} = ${toText(wv)}` : `${w} = ${toText(wv)}, ${v} = ${toText(vv)}`,
-          approx: vv.kind === 'num' && wv.kind === 'num' ? undefined : `${v} ≈ ${formatNumber(approxV)}, ${w} ≈ ${formatNumber(r.value)}`,
+          text:
+            vars[0] === v ? `${v} = ${toText(vv)}, ${w} = ${toText(wv)}` : `${w} = ${toText(wv)}, ${v} = ${toText(vv)}`,
+          approx:
+            vv.kind === 'num' && wv.kind === 'num'
+              ? undefined
+              : `${v} ≈ ${formatNumber(approxV)}, ${w} ≈ ${formatNumber(r.value)}`,
         })
       }
-      if (pairs.length) steps.push({ title: `Substitute each value back to find ${v}`, tex: pairs.join(' \\quad\\text{and}\\quad ') })
+      if (pairs.length)
+        steps.push({ title: `Substitute each value back to find ${v}`, tex: pairs.join(' \\quad\\text{and}\\quad ') })
       if (!answers.length) answers.push({ tex: '\\text{No real solution}', text: 'No real solution' })
-      return { kind: 'system', title: `Solve the system for ${vars.join(', ')}`, problemTex, answers, steps, notes: res.notes }
+      return {
+        kind: 'system',
+        title: `Solve the system for ${vars.join(', ')}`,
+        problemTex,
+        answers,
+        steps,
+        notes: res.notes,
+      }
     }
   }
   throw new MathError('I could not isolate a variable in either equation to solve this system')

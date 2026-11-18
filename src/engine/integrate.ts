@@ -130,7 +130,7 @@ function integ(e: Expr, x: string, steps: Step[], depth: number): Expr | null {
     return table.F
   }
 
-  const rational = integrateRational(e, x, depth)
+  const rational = integrateRational(e, x)
   if (rational) {
     steps.push(...rational.steps)
     return rational.F
@@ -274,7 +274,10 @@ function tableIntegral(e: Expr, x: string): { F: Expr; rule: string } | null {
       case 'sec':
         return { F: over(lin, lnAbs(add(fn('sec', u), fn('tan', u)))), rule: `∫sec(u) du = ln|sec(u) + tan(u)|${n}` }
       case 'csc':
-        return { F: over(lin, neg(lnAbs(add(fn('csc', u), fn('cot', u))))), rule: `∫csc(u) du = −ln|csc(u) + cot(u)|${n}` }
+        return {
+          F: over(lin, neg(lnAbs(add(fn('csc', u), fn('cot', u))))),
+          rule: `∫csc(u) du = −ln|csc(u) + cot(u)|${n}`,
+        }
       case 'sinh':
         return { F: over(lin, fn('cosh', u)), rule: `∫sinh(u) du = cosh(u)${n}` }
       case 'cosh':
@@ -314,7 +317,7 @@ function tableIntegral(e: Expr, x: string): { F: Expr; rule: string } | null {
 // ---------------------------------------------------------------------------
 // Rational functions: long division + partial fractions
 
-function integrateRational(e: Expr, x: string, depth: number): { F: Expr; steps: Step[] } | null {
+function integrateRational(e: Expr, x: string): { F: Expr; steps: Step[] } | null {
   const rf = ratFromExpr(e, x)
   if (!rf || rf.den.isConstant()) return null
   const steps: Step[] = []
@@ -358,7 +361,10 @@ function integrateRational(e: Expr, x: string, depth: number): { F: Expr; steps:
     const n = basis.length
     if (n !== Dp.degree) return null
     const A = Array.from({ length: n }, (_, row) => basis.map((b) => b.coef(row)))
-    const sol = solveLinear(A, Array.from({ length: n }, (_, row) => target.coef(row)))
+    const sol = solveLinear(
+      A,
+      Array.from({ length: n }, (_, row) => target.coef(row)),
+    )
     if (!sol) return null
     let idx = 0
     const decomposition: Expr[] = []
@@ -375,7 +381,10 @@ function integrateRational(e: Expr, x: string, depth: number): { F: Expr; steps:
           s.power === 1
             ? simplify(mul(num(A0.div(p)), fn('ln', fn('abs', fx))))
             : simplify(mul(num(A0.div(p.mul(Rational.of(1 - s.power)))), pow(fx, 1 - s.power)))
-        sub.push({ title: s.power === 1 ? '∫ A/(px + q) dx = (A/p)·ln|px + q|' : 'Power rule with u = px + q', tex: `${intTex(termE, x)} = ${toTex(F)}` })
+        sub.push({
+          title: s.power === 1 ? '∫ A/(px + q) dx = (A/p)·ln|px + q|' : 'Power rule with u = px + q',
+          tex: `${intTex(termE, x)} = ${toTex(F)}`,
+        })
         terms.push(F)
       } else {
         const B = sol[idx++]
@@ -390,7 +399,11 @@ function integrateRational(e: Expr, x: string, depth: number): { F: Expr; steps:
         const root = simplify(sqrt(num(disc)))
         const lnPart = simplify(mul(num(k1), fn('ln', a0.sign() > 0 ? fx : fn('abs', fx))))
         const atanPart = simplify(
-          mul(num(k2.mul(Rational.of(2))), pow(root, -1), fn('atan', div(add(mul(num(a0.mul(Rational.of(2))), X), num(b0)), root))),
+          mul(
+            num(k2.mul(Rational.of(2))),
+            pow(root, -1),
+            fn('atan', div(add(mul(num(a0.mul(Rational.of(2))), X), num(b0)), root)),
+          ),
         )
         const F = simplify(add(lnPart, atanPart))
         sub.push({
@@ -410,7 +423,6 @@ function integrateRational(e: Expr, x: string, depth: number): { F: Expr; steps:
   } else if (pieces.length) {
     steps.push({ title: 'Integrate the polynomial with the power rule' })
   }
-  void depth
   const F = simplify(add(...terms))
   return { F, steps }
 }
@@ -421,7 +433,16 @@ function integrateRational(e: Expr, x: string, depth: number): { F: Expr; steps:
 function subexpressions(e: Expr, x: string, out: Map<string, Expr>): Map<string, Expr> {
   if (!contains(e, x) || isSym(e, x)) return out
   out.set(key(e), e)
-  const kids = e.kind === 'add' ? e.terms : e.kind === 'mul' ? e.factors : e.kind === 'pow' ? [e.base, e.exp] : e.kind === 'fn' ? e.args : []
+  const kids =
+    e.kind === 'add'
+      ? e.terms
+      : e.kind === 'mul'
+        ? e.factors
+        : e.kind === 'pow'
+          ? [e.base, e.exp]
+          : e.kind === 'fn'
+            ? e.args
+            : []
   for (const k of kids) subexpressions(k, x, out)
   return out
 }
@@ -482,7 +503,6 @@ const TABULAR_FNS = new Set(['sin', 'cos', 'sinh', 'cosh'])
 function byParts(e: Expr, x: string, depth: number): { F: Expr; steps: Step[] } | null {
   if (e.kind !== 'mul' && !(e.kind === 'fn' && (e.name === 'ln' || e.name === 'atan' || e.name === 'log'))) return null
   const factors = e.kind === 'mul' ? e.factors : [e]
-  const X = sym(x)
   // Split into polynomial part P and one transcendental factor T.
   const polyFactors: Expr[] = []
   const others: Expr[] = []
@@ -553,7 +573,9 @@ function byParts(e: Expr, x: string, depth: number): { F: Expr; steps: Step[] } 
     const c0 = polyFactors.length ? polyFromExpr(polyFactors[0], x) : Poly.constant(1)
     if (!c0 || c0.degree > 0) return null
     const expF = others.find((f) => f.kind === 'pow' && isSym(f.base, 'e') && linear(f.exp, x))
-    const trig = others.find((f): f is Fn => f.kind === 'fn' && (f.name === 'sin' || f.name === 'cos') && !!linear(f.args[0], x))
+    const trig = others.find(
+      (f): f is Fn => f.kind === 'fn' && (f.name === 'sin' || f.name === 'cos') && !!linear(f.args[0], x),
+    )
     if (expF && trig && expF.kind === 'pow') {
       const la = linear(expF.exp, x)!
       const lb = linear(trig.args[0], x)!
@@ -576,11 +598,9 @@ function byParts(e: Expr, x: string, depth: number): { F: Expr; steps: Step[] } 
       }
     }
   }
-  void X
   return null
 }
 
 function sub2(a: Expr, b: Expr): Expr {
   return add(a, neg(b))
 }
-

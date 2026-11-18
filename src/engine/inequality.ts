@@ -1,10 +1,9 @@
-import { type Expr, add, contains, freeSymbols, mul, num, sub, sym } from './expr'
+import { type Expr, add, freeSymbols, mul, num, sub, sym } from './expr'
 import { identify } from './identify'
 import { bisect, compile } from './numeric'
 import { type Poly, polyFromExpr, ratFromExpr } from './poly'
 import type { RelOp } from './parser'
 import { formatNumber, texNumber, toTex, toText } from './print'
-import { Rational } from './rational'
 import { simplify } from './simplify'
 import { type Root, solvePolynomial } from './solve'
 import type { Answer, Solution, Step } from './types'
@@ -91,11 +90,20 @@ function buildIntervals(points: Array<Pt & { pole: boolean }>, f: (v: number) =>
     return Number.isFinite(y) && holds(y, op)
   }
   // pieces: (-inf, p0), p0, (p0, p1), p1, ..., (pn, inf)
-  const pieces: Array<{ kind: 'open'; lo: Pt | null; hi: Pt | null; ok: boolean } | { kind: 'pt'; p: Pt; ok: boolean }> = []
+  const pieces: Array<
+    { kind: 'open'; lo: Pt | null; hi: Pt | null; ok: boolean } | { kind: 'pt'; p: Pt; ok: boolean }
+  > = []
   for (let i = 0; i <= pts.length; i++) {
     const lo = i > 0 ? pts[i - 1] : null
     const hi = i < pts.length ? pts[i] : null
-    const t = !lo && !hi ? 0 : !lo ? hi!.value - Math.max(1, Math.abs(hi!.value)) : !hi ? lo.value + Math.max(1, Math.abs(lo.value)) : (lo.value + hi.value) / 2
+    const t =
+      !lo && !hi
+        ? 0
+        : !lo
+          ? hi!.value - Math.max(1, Math.abs(hi!.value))
+          : !hi
+            ? lo.value + Math.max(1, Math.abs(lo.value))
+            : (lo.value + hi.value) / 2
     pieces.push({ kind: 'open', lo, hi, ok: testAt(t) })
     if (hi) pieces.push({ kind: 'pt', p: hi, ok: !hi.pole && !strict && testAt(hi.value) })
   }
@@ -142,7 +150,8 @@ export function inequalitySolution(
   problemTex = `${toTex(L)} ${OP_TEX[op]} ${toTex(R)}`,
 ): Solution {
   const answers: Answer[] = []
-  if (ivs.length === 1 && !ivs[0].lo && !ivs[0].hi) answers.push({ tex: `\\text{All real numbers}`, text: 'All real numbers' })
+  if (ivs.length === 1 && !ivs[0].lo && !ivs[0].hi)
+    answers.push({ tex: `\\text{All real numbers}`, text: 'All real numbers' })
   else if (ivs.length === 0) answers.push({ tex: '\\text{No solution}', text: 'No solution' })
   else {
     const form = ivs.length === 1 ? inequalityForm(ivs[0], x) : null
@@ -176,7 +185,14 @@ export function inequalitySolution(
   }
 }
 
-export function inequalityIntervals(L0: Expr, op: RelOp, R0: Expr, x: string, steps: Step[], notes: string[]): Interval[] {
+export function inequalityIntervals(
+  L0: Expr,
+  op: RelOp,
+  R0: Expr,
+  x: string,
+  steps: Step[],
+  notes: string[],
+): Interval[] {
   const L = simplify(L0)
   const R = simplify(R0)
   const diff = simplify(sub(L, R))
@@ -190,14 +206,19 @@ export function inequalityIntervals(L0: Expr, op: RelOp, R0: Expr, x: string, st
     const p = pl.sub(pr)
     const a = p.coef(1)
     const b = p.coef(0)
-    steps.push({ title: `Move the ${x} terms to the left and the numbers to the right`, tex: `${toTex(simplify(mul(num(a), X)))} ${OP_TEX[op]} ${toTex(num(b.neg()))}` })
+    steps.push({
+      title: `Move the ${x} terms to the left and the numbers to the right`,
+      tex: `${toTex(simplify(mul(num(a), X)))} ${OP_TEX[op]} ${toTex(num(b.neg()))}`,
+    })
     const flip = a.sign() < 0
     const flipped: Record<string, RelOp> = { '<': '>', '>': '<', '<=': '>=', '>=': '<=' }
-    const nop = flip ? flipped[op] ?? op : op
+    const nop = flip ? (flipped[op] ?? op) : op
     const r = b.neg().div(a)
     if (!a.isOne())
       steps.push({
-        title: flip ? `Divide both sides by ${a.toString()}. Dividing by a negative number flips the inequality sign` : `Divide both sides by ${a.toString()}`,
+        title: flip
+          ? `Divide both sides by ${a.toString()}. Dividing by a negative number flips the inequality sign`
+          : `Divide both sides by ${a.toString()}`,
         tex: `${x} ${OP_TEX[nop]} ${toTex(num(r))}`,
       })
     const pt: Pt = { value: r.toNumber(), exact: num(r) }
@@ -242,11 +263,16 @@ export function inequalityIntervals(L0: Expr, op: RelOp, R0: Expr, x: string, st
       title: rf.den.isConstant()
         ? 'Find the critical points, where the expression equals zero'
         : 'Find the critical points: zeros of the numerator and of the denominator (where it is undefined)',
-      tex: pts.length ? pts.map((p) => `${x} = ${ptTex(p)}${p.pole ? '\\ (\\text{undefined})' : ''}`).join(',\\quad ') : '\\text{none}',
+      tex: pts.length
+        ? pts.map((p) => `${x} = ${ptTex(p)}${p.pole ? '\\ (\\text{undefined})' : ''}`).join(',\\quad ')
+        : '\\text{none}',
       substeps: sub1.length ? sub1 : undefined,
     })
     const ivs = buildIntervals(pts, f, op)
-    steps.push({ title: 'Test one point in each interval to see where the inequality holds', substeps: signChart(pts, f, x, op) })
+    steps.push({
+      title: 'Test one point in each interval to see where the inequality holds',
+      substeps: signChart(pts, f, x, op),
+    })
     return ivs
   }
 
@@ -293,7 +319,8 @@ function signChart(pts: Pt[], f: (v: number) => number, x: string, op: RelOp): S
   for (let i = 0; i <= sorted.length; i++) {
     const lo = i > 0 ? sorted[i - 1] : null
     const hi = i < sorted.length ? sorted[i] : null
-    const t = !lo && !hi ? 0 : !lo ? Math.floor(hi!.value) - 1 : !hi ? Math.ceil(lo.value) + 1 : (lo.value + hi.value) / 2
+    const t =
+      !lo && !hi ? 0 : !lo ? Math.floor(hi!.value) - 1 : !hi ? Math.ceil(lo.value) + 1 : (lo.value + hi.value) / 2
     const y = f(t)
     const ok = Number.isFinite(y) && holds(y, op)
     const range = `${lo ? ptText(lo) : '−∞'} < ${x} < ${hi ? ptText(hi) : '∞'}`
@@ -326,4 +353,4 @@ export function intersectIntervals(a: Interval[], b: Interval[]): Interval[] {
   return out.sort((p, q) => lv(p.lo) - lv(q.lo))
 }
 
-export { OP_TEX, Rational, contains }
+export { OP_TEX }

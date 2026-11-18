@@ -26,10 +26,11 @@ export function rref(input: Matrix, cols = input[0]?.length ?? 0, record = false
   const log = (desc: string) => record && ops.push({ desc, matrix: clone(m) })
   for (let c = 0; c < cols && r < rows; c++) {
     let p = -1
-    for (let i = r; i < rows; i++) if (!m[i][c].isZero()) {
-      p = i
-      break
-    }
+    for (let i = r; i < rows; i++)
+      if (!m[i][c].isZero()) {
+        p = i
+        break
+      }
     if (p < 0) continue
     if (p !== r) {
       ;[m[p], m[r]] = [m[r], m[p]]
@@ -67,6 +68,7 @@ export function solveLinear(A: Matrix, b: Rational[]): Rational[] | null {
 export function matrixTex(m: Matrix, augmented = 0): string {
   const cols = m[0]?.length ?? 0
   const spec = augmented ? 'c'.repeat(cols - augmented) + '|' + 'c'.repeat(augmented) : 'c'.repeat(cols)
-  const cell = (r: Rational) => (r.isInteger() ? r.toString() : `${r.sign() < 0 ? '-' : ''}\\frac{${r.abs().n}}{${r.d}}`)
+  const cell = (r: Rational) =>
+    r.isInteger() ? r.toString() : `${r.sign() < 0 ? '-' : ''}\\frac{${r.abs().n}}{${r.d}}`
   return `\\left[\\begin{array}{${spec}}${m.map((row) => row.map(cell).join(' & ')).join(' \\\\ ')}\\end{array}\\right]`
 }
