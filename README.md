@@ -62,4 +62,4 @@ CI (`.github/workflows/ci.yml`) runs all of the above on every pull request and 
 
 `npm run build` produces a static site in `dist/` that can be hosted anywhere (Netlify, Vercel, Cloudflare Pages, any static file server). Asset paths are relative, so it also works from a sub-path.
 
-A manual GitHub Pages workflow is included (`.github/workflows/deploy.yml`). Enable Pages under **Settings → Pages → Source: GitHub Actions**, then run the workflow from the Actions tab. Pages for private repositories requires a paid GitHub plan.
+The GitHub Pages workflow (`.github/workflows/deploy.yml`) publishes the site on every push to `main`, and can also be run by hand from the Actions tab. Enable Pages once under **Settings → Pages → Source: GitHub Actions**. Pages for private repositories requires a paid GitHub plan.

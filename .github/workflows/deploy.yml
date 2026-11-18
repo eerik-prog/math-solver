@@ -1,9 +1,11 @@
-# Publishes the app to GitHub Pages. Run it from the Actions tab once Pages is
-# enabled (Settings → Pages → Source: GitHub Actions). Pages on private
-# repositories needs a paid GitHub plan.
+# Publishes the app to GitHub Pages on every push to main (and on demand from
+# the Actions tab). Needs Pages enabled once: Settings → Pages → Source:
+# GitHub Actions. Pages on private repositories needs a paid GitHub plan.
 name: Deploy to GitHub Pages
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
