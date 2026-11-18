@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { compile } from '../engine/numeric'
 import { parseExpression } from '../engine/parser'
 import type { PlotSpec } from '../engine/types'
 
-const W = 800
-const H = 450
 const SAMPLES = 800
 
 interface View {
@@ -72,13 +70,45 @@ export function Plot({ spec }: { spec: PlotSpec }) {
   }, [fns, spec.xRange])
 
   const [view, setView] = useState<View>(initial)
+  // Draw in real pixels (the measured width), so text and lines keep their size on small screens.
+  const [W, setW] = useState(800)
+  const H = Math.round(W < 500 ? W * 0.75 : W * 0.5625)
+  // The curves draw themselves once the graph scrolls into view.
+  const [seen, setSeen] = useState(() => typeof IntersectionObserver === 'undefined')
   const [hover, setHover] = useState<number | null>(null)
 
   const svgRef = useRef<SVGSVGElement>(null)
   const drag = useRef<{ px: number; py: number; view: View } | null>(null)
 
-  const sx = useCallback((x: number) => ((x - view.x0) / (view.x1 - view.x0)) * W, [view])
-  const sy = useCallback((y: number) => H - ((y - view.y0) / (view.y1 - view.y0)) * H, [view])
+  useLayoutEffect(() => {
+    const el = svgRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(([entry]) => {
+      const w = Math.round(entry.contentRect.width)
+      if (w > 0) setW(w)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const el = svgRef.current
+    if (seen || !el) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setSeen(true)
+          io.disconnect()
+        }
+      },
+      { threshold: 0.3 },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [seen])
+
+  const sx = useCallback((x: number) => ((x - view.x0) / (view.x1 - view.x0)) * W, [view, W])
+  const sy = useCallback((y: number) => H - ((y - view.y0) / (view.y1 - view.y0)) * H, [view, H])
 
   const paths = useMemo(() => {
     const span = view.y1 - view.y0
@@ -100,7 +130,7 @@ export function Plot({ spec }: { spec: PlotSpec }) {
       }
       return d
     })
-  }, [fns, view])
+  }, [fns, view, W, H])
 
   // Wheel zoom needs a non-passive listener to prevent page scroll.
   useEffect(() => {
@@ -152,8 +182,8 @@ export function Plot({ spec }: { spec: PlotSpec }) {
     drag.current = null
   }
 
-  const xStep = niceStep(view.x1 - view.x0)
-  const yStep = niceStep(view.y1 - view.y0, 6)
+  const xStep = niceStep(view.x1 - view.x0, W < 500 ? 5 : 8)
+  const yStep = niceStep(view.y1 - view.y0, W < 500 ? 5 : 6)
   const xTicks: number[] = []
   for (let t = Math.ceil(view.x0 / xStep) * xStep; t <= view.x1; t += xStep) xTicks.push(t)
   const yTicks: number[] = []
@@ -164,7 +194,7 @@ export function Plot({ spec }: { spec: PlotSpec }) {
   const hoverValues = hover === null ? [] : fns.map((f) => f(hover))
 
   return (
-    <figure className="plot">
+    <figure className={seen ? 'plot seen' : 'plot'}>
       <div className="plot-toolbar" role="toolbar" aria-label="Graph controls">
         <div className="plot-legend">
           {spec.fns.map((f, i) => (
@@ -199,10 +229,17 @@ export function Plot({ spec }: { spec: PlotSpec }) {
           setHover(null)
         }}
       >
+        <defs>
+          <pattern id="plot-hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <line className="hatch-line" x1="0" y1="0" x2="0" y2="7" />
+          </pattern>
+        </defs>
         {spec.ranges?.map(([a, b], i) => {
           const xa = Math.max(0, sx(Math.max(a, view.x0 - 1)))
           const xb = Math.min(W, sx(Math.min(b, view.x1 + 1)))
-          return xb > xa ? <rect key={i} className="plot-range" x={xa} y={0} width={xb - xa} height={H} /> : null
+          return xb > xa ? (
+            <rect key={i} className="plot-range" fill="url(#plot-hatch)" x={xa} y={0} width={xb - xa} height={H} />
+          ) : null
         })}
         {xTicks.map((t) => (
           <line key={`gx${t}`} className="grid" x1={sx(t)} x2={sx(t)} y1={0} y2={H} />
@@ -213,8 +250,16 @@ export function Plot({ spec }: { spec: PlotSpec }) {
         <line className="axis" x1={0} x2={W} y1={axisY} y2={axisY} />
         <line className="axis" x1={axisX} x2={axisX} y1={0} y2={H} />
         {xTicks.map((t) =>
-          Math.abs(t) < xStep / 1e6 ? null : (
-            <text key={`tx${t}`} className="tick" x={sx(t)} y={Math.min(axisY + 16, H - 4)} textAnchor="middle">
+          // skip zero (the axes meet there) and labels that would be cut off at the edges
+          Math.abs(t) < xStep / 1e6 || sx(t) < 16 || sx(t) > W - 16 ? null : (
+            <text
+              key={`tx${t}`}
+              className="tick"
+              x={sx(t)}
+              y={Math.min(axisY + 6, H - 18)}
+              textAnchor="middle"
+              dominantBaseline="hanging"
+            >
               {fmtTick(t, xStep)}
             </text>
           ),
@@ -224,18 +269,23 @@ export function Plot({ spec }: { spec: PlotSpec }) {
             <text
               key={`ty${t}`}
               className="tick"
-              x={Math.min(Math.max(axisX - 6, 30), W - 4)}
-              y={sy(t) + 4}
+              x={Math.min(Math.max(axisX - 6, 34), W - 4)}
+              y={sy(t)}
               textAnchor="end"
+              dominantBaseline="central"
             >
               {fmtTick(t, yStep)}
             </text>
           ),
         )}
-        {spec.shade && fns[0] && <path className="plot-shade" d={shadePath(fns[0], spec.shade, view, sx, sy)} />}
-        {paths.map((d, i) => (
-          <path key={i} className={`curve c${i}`} d={d} />
-        ))}
+        <g className="curves">
+          {spec.shade && fns[0] && (
+            <path className="plot-shade" fill="url(#plot-hatch)" d={shadePath(fns[0], spec.shade, view, sx, sy)} />
+          )}
+          {paths.map((d, i) => (
+            <path key={i} className={`curve c${i}`} d={d} />
+          ))}
+        </g>
         {spec.points?.map((p, i) =>
           Number.isFinite(p.y) ? (
             <g key={i}>

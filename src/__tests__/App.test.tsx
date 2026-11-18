@@ -63,6 +63,18 @@ describe('App', () => {
     expect(input.value).toBe('x^2sqrt()')
   })
 
+  it('cycles the colour theme and remembers it', async () => {
+    render(<App />)
+    const toggle = screen.getByRole('button', { name: /Theme: auto/ })
+    await userEvent.click(toggle)
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    await userEvent.click(screen.getByRole('button', { name: /Theme: dark/ }))
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+    expect(localStorage.getItem('math-solver:theme')).toBe('light')
+    await userEvent.click(screen.getByRole('button', { name: /Theme: light/ }))
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false)
+  })
+
   it('loads the problem from the URL', async () => {
     window.history.replaceState(null, '', '/?q=' + encodeURIComponent('factor 360'))
     render(<App />)

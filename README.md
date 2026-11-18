@@ -32,7 +32,9 @@ The math engine (`src/engine`) is written from scratch in TypeScript, with no ru
 - **Calculus**: rule-based differentiation (`diff.ts`); integration by table, substitution, partial fractions and by parts (`integrate.ts`); limits by substitution, factoring and L'Hôpital (`limit.ts`).
 - **Self-checking**: every solution is substituted back into the original equation (which removes extraneous roots), every antiderivative is differentiated back and compared with the integrand, and every definite integral and limit is cross-checked numerically. An answer that fails its check is never shown.
 
-The UI (`src/App.tsx`, `src/components`) is React. The engine runs in a Web Worker with a timeout, so the page never freezes. KaTeX (math rendering) is loaded on demand to keep the first load small (about 77 kB of gzipped JavaScript). Problems solve as you type, the URL holds the current problem so it can be shared, and recent problems are kept in local storage.
+The UI (`src/App.tsx`, `src/components`) is React. The engine runs in a Web Worker with a timeout, so the page never freezes. KaTeX (math rendering) is loaded on demand to keep the first load small (about 79 kB of gzipped JavaScript). Problems solve as you type, the URL holds the current problem so it can be shared, and recent problems are kept in local storage.
+
+The look is strictly black and white: Instrument Serif for headings, Geist and Geist Mono for text and input (self-hosted, no font requests to third parties), answers in solid ink, and a light, dark or automatic theme. Motion is kept small: content rises in when a problem is solved, graphs draw themselves when scrolled into view, the theme switches with a circular reveal, and the input cycles example problems. Updates made while typing appear without motion, and all motion is turned off for people who ask their system to reduce it.
 
 ## Development
 

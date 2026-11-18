@@ -16,6 +16,7 @@ function render(tex: string, display: boolean): string | null {
       throwOnError: false,
       strict: 'ignore',
       output: 'htmlAndMathml',
+      errorColor: 'currentColor',
     })
   } catch {
     return null
