@@ -351,7 +351,7 @@ function integralProblem(spec: IntegralSpec): Solution {
     notes,
     plot: {
       variable: x,
-      fns: [{ expr: toText(simplify(e)), label: 'f' }],
+      fns: [{ expr: toText(simplify(e)), label: `y = ${toText(simplify(e))}` }],
       shade: [finiteA, finiteB],
       xRange: [Math.min(finiteA, finiteB) - pad, Math.max(finiteA, finiteB) + pad],
     },

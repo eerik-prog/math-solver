@@ -178,7 +178,7 @@ export function inequalitySolution(
       ? undefined
       : {
           variable: x,
-          fns: [{ expr: toText(simplify(sub(L, R))), label: 'left − right' }],
+          fns: [{ expr: toText(simplify(sub(L, R))), label: `y = ${toText(simplify(sub(L, R)))}` }],
           ranges,
           xRange: [mid - span, mid + span],
         },

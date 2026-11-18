@@ -250,7 +250,8 @@ export function Plot({ spec }: { spec: PlotSpec }) {
         <line className="axis" x1={0} x2={W} y1={axisY} y2={axisY} />
         <line className="axis" x1={axisX} x2={axisX} y1={0} y2={H} />
         {xTicks.map((t) =>
-          Math.abs(t) < xStep / 1e6 ? null : (
+          // skip zero (the axes meet there) and labels that would be cut off at the edges
+          Math.abs(t) < xStep / 1e6 || sx(t) < 16 || sx(t) > W - 16 ? null : (
             <text
               key={`tx${t}`}
               className="tick"

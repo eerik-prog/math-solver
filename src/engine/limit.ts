@@ -247,7 +247,7 @@ export function solveLimit(f0: Expr, x: string, a: Expr, side: '' | '+' | '-' = 
     plot: simplifyFree(f, x)
       ? {
           variable: x,
-          fns: [{ expr: toTextSafe(f), label: 'f' }],
+          fns: [{ expr: toTextSafe(f), label: `y = ${toTextSafe(f)}` }],
           xRange: atInf ? [-20, 20] : [aNum - 4, aNum + 4],
           points:
             final.kind === 'finite' && !atInf
