@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { prefersReducedMotion, rise } from '../motion'
 
 interface Props {
@@ -103,12 +104,12 @@ export const MathInput = forwardRef<MathInputHandle, Props>(function MathInput(
     const cursorAt = snippet.indexOf('|')
     const text = snippet.replace('|', selected)
     const next = value.slice(0, start) + text + value.slice(end)
-    onChange(next)
+    // Commit the new value now so the cursor can be placed straight away; a deferred move could
+    // land after the next keystroke and send it to the wrong place.
+    flushSync(() => onChange(next))
     const pos = start + (cursorAt >= 0 ? cursorAt + selected.length : text.length)
-    requestAnimationFrame(() => {
-      el?.focus()
-      el?.setSelectionRange(pos, pos)
-    })
+    el?.focus()
+    el?.setSelectionRange(pos, pos)
   }
 
   return (
