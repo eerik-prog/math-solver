@@ -45,7 +45,7 @@ function linearSystem(rows: Rational[][], vars: string[], problemTex: string): S
   const n = vars.length
   const standard = rows.map((r) => {
     const lhs = simplify(add(...r.slice(0, n).map((c, i) => mul(num(c), sym(vars[i])))))
-    return `${toTex(lhs)} = ${toTex(num(r[n]))}`
+    return `${toTex(lhs)} &= ${toTex(num(r[n]))}`
   })
   steps.push({
     title: 'Write every equation in standard form (variables on the left, numbers on the right)',

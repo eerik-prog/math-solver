@@ -2,10 +2,11 @@ import { useState } from 'react'
 import type { Answer, Solution, Step } from '../engine/types'
 import { Plot } from './Plot'
 import { Tex } from './Tex'
+import { rise } from '../motion'
 
-function StepItem({ step, depth }: { step: Step; depth: number }) {
+function StepItem({ step, depth, index }: { step: Step; depth: number; index: number }) {
   return (
-    <li className="step">
+    <li className={depth === 0 ? 'step rise' : 'step'} style={depth === 0 ? rise(2 + Math.min(index, 10)) : undefined}>
       <p className="step-title">{step.title}</p>
       {step.tex && (
         <div className="step-math">
@@ -17,7 +18,7 @@ function StepItem({ step, depth }: { step: Step; depth: number }) {
           <summary>{depth === 0 ? 'How?' : 'More detail'}</summary>
           <ol>
             {step.substeps.map((s, i) => (
-              <StepItem key={i} step={s} depth={depth + 1} />
+              <StepItem key={i} step={s} depth={depth + 1} index={i} />
             ))}
           </ol>
         </details>
@@ -26,7 +27,7 @@ function StepItem({ step, depth }: { step: Step; depth: number }) {
   )
 }
 
-function AnswerRow({ answer }: { answer: Answer }) {
+function AnswerRow({ answer, index }: { answer: Answer; index: number }) {
   const [copied, setCopied] = useState(false)
   const copy = async () => {
     try {
@@ -38,25 +39,31 @@ function AnswerRow({ answer }: { answer: Answer }) {
     }
   }
   return (
-    <li className={`answer${answer.complex ? ' complex' : ''}`}>
+    <li className={`answer rise${answer.complex ? ' complex' : ''}`} style={rise(1 + Math.min(index, 8))}>
       <div className="answer-math">
         <Tex tex={answer.tex} display />
         {answer.approx && <span className="approx">≈ {answer.approx}</span>}
       </div>
-      <button type="button" className="ghost small" onClick={copy} aria-label={`Copy ${answer.text}`}>
-        {copied ? 'Copied' : 'Copy'}
+      <button
+        type="button"
+        className={`copy${copied ? ' done' : ''}`}
+        onClick={copy}
+        aria-label={`Copy ${answer.text}`}
+      >
+        {copied ? 'Copied ✓' : 'Copy'}
       </button>
     </li>
   )
 }
 
-export function SolutionView({ solution, ms }: { solution: Solution; ms: number }) {
+/** `quiet` turns off entrance animations, for updates made while the person is still typing. */
+export function SolutionView({ solution, ms, quiet = false }: { solution: Solution; ms: number; quiet?: boolean }) {
   const [showSteps, setShowSteps] = useState(true)
   const real = solution.answers.filter((a) => !a.complex)
   const complex = solution.answers.filter((a) => a.complex)
   return (
-    <article className="solution" aria-labelledby="solution-title">
-      <header className="card">
+    <article className={quiet ? 'solution quiet' : 'solution'} aria-labelledby="solution-title">
+      <header className="card solution-head rise" style={rise(0)}>
         <p className="eyebrow" id="solution-title">
           {solution.title}
         </p>
@@ -66,7 +73,7 @@ export function SolutionView({ solution, ms }: { solution: Solution; ms: number 
         <h2 className="answers-heading">{solution.answers.length > 1 ? 'Answers' : 'Answer'}</h2>
         <ul className="answers">
           {real.map((a, i) => (
-            <AnswerRow key={i} answer={a} />
+            <AnswerRow key={i} answer={a} index={i} />
           ))}
         </ul>
         {complex.length > 0 && (
@@ -74,7 +81,7 @@ export function SolutionView({ solution, ms }: { solution: Solution; ms: number 
             <h3 className="complex-heading">Complex solutions</h3>
             <ul className="answers">
               {complex.map((a, i) => (
-                <AnswerRow key={i} answer={a} />
+                <AnswerRow key={i} answer={a} index={real.length + i} />
               ))}
             </ul>
           </>
@@ -90,7 +97,7 @@ export function SolutionView({ solution, ms }: { solution: Solution; ms: number 
       </header>
 
       {solution.steps.length > 0 && (
-        <section className="card" aria-labelledby="steps-title">
+        <section className="card rise" style={rise(1)} aria-labelledby="steps-title">
           <div className="section-head">
             <h2 id="steps-title">Step-by-step</h2>
             <button
@@ -105,7 +112,7 @@ export function SolutionView({ solution, ms }: { solution: Solution; ms: number 
           {showSteps && (
             <ol className="steps">
               {solution.steps.map((s, i) => (
-                <StepItem key={i} step={s} depth={0} />
+                <StepItem key={i} step={s} depth={0} index={i} />
               ))}
             </ol>
           )}
@@ -113,7 +120,7 @@ export function SolutionView({ solution, ms }: { solution: Solution; ms: number 
       )}
 
       {solution.plot && (
-        <section className="card" aria-labelledby="graph-title">
+        <section className="card rise" style={rise(2)} aria-labelledby="graph-title">
           <h2 id="graph-title">Graph</h2>
           <Plot key={JSON.stringify(solution.plot)} spec={solution.plot} />
         </section>

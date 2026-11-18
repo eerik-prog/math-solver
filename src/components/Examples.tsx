@@ -1,3 +1,5 @@
+import { rise } from '../motion'
+
 const GROUPS: Array<{ name: string; items: string[] }> = [
   {
     name: 'Equations',
@@ -39,7 +41,7 @@ const GROUPS: Array<{ name: string; items: string[] }> = [
 
 export function Examples({ onPick }: { onPick: (q: string) => void }) {
   return (
-    <section className="card examples" aria-labelledby="examples-title">
+    <section className="card examples rise" style={rise(4)} aria-labelledby="examples-title">
       <h2 id="examples-title">Try an example</h2>
       {GROUPS.map((g) => (
         <div key={g.name} className="example-group">

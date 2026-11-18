@@ -1,14 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Examples } from './components/Examples'
 import { MathInput, type MathInputHandle } from './components/MathInput'
 import { SolutionView } from './components/SolutionView'
 import type { SolveResponse } from './engine/types'
+import { prefersReducedMotion, rise } from './motion'
 import { SolverClient } from './solverClient'
 import { addToHistory, loadHistory, saveHistory } from './storage'
 
 const DEBOUNCE_MS = 450
+/** Errors from solve-as-you-type wait this much longer, so half-typed input isn't flagged. */
+const TYPING_ERROR_DELAY_MS = 1200
+/** Only show "Solving…" for solves slow enough to notice. */
+const BUSY_DELAY_MS = 200
+
+const THEME_COLOR = { light: '#fafafa', dark: '#000000' }
 
 type Theme = 'light' | 'dark' | 'system'
+
+const THEME_LABEL: Record<Theme, string> = { system: 'Auto', dark: 'Dark', light: 'Light' }
 
 function initialQuery(): string {
   try {
@@ -27,10 +37,16 @@ function useTheme(): [Theme, (t: Theme) => void] {
       return 'system'
     }
   })
-  useEffect(() => {
+  // Layout effect so the attribute is in place before the theme-change transition captures the new view.
+  useLayoutEffect(() => {
     const root = document.documentElement
     if (theme === 'system') root.removeAttribute('data-theme')
     else root.setAttribute('data-theme', theme)
+    // Browser UI colour (address bar on phones) follows the chosen theme, or the system one on Auto.
+    for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
+      const mode = theme !== 'system' ? theme : meta.media.includes('dark') ? 'dark' : 'light'
+      meta.content = THEME_COLOR[mode]
+    }
     try {
       localStorage.setItem('math-solver:theme', theme)
     } catch {
@@ -40,15 +56,37 @@ function useTheme(): [Theme, (t: Theme) => void] {
   return [theme, setTheme]
 }
 
+function effectiveTheme(t: Theme): 'light' | 'dark' {
+  if (t !== 'system') return t
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches
+    ? 'dark'
+    : 'light'
+}
+
+function ThemeIcon({ theme }: { theme: Theme }) {
+  return (
+    <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" className="theme-icon">
+      <circle cx="10" cy="10" r="7.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      {theme === 'system' && <path d="M10 2.75a7.25 7.25 0 0 1 0 14.5z" fill="currentColor" />}
+      {theme === 'dark' && <circle cx="10" cy="10" r="7.25" fill="currentColor" />}
+    </svg>
+  )
+}
+
 export default function App() {
   const client = useMemo(() => new SolverClient(), [])
   const [input, setInput] = useState(initialQuery)
   const [response, setResponse] = useState<SolveResponse | null>(null)
+  // `reveal` changes when a solution should animate in (submit, example, first load), not on every keystroke.
+  const [reveal, setReveal] = useState({ id: 0, animate: true })
+  const [errorVisible, setErrorVisible] = useState(false)
   const [busy, setBusy] = useState(false)
   const [history, setHistory] = useState<string[]>(loadHistory)
   const [theme, setTheme] = useTheme()
   const requestId = useRef(0)
   const inputRef = useRef<MathInputHandle>(null)
+  const themeButton = useRef<HTMLButtonElement>(null)
+  const shownFirst = useRef(false)
 
   const run = useCallback(
     async (q: string, record: boolean) => {
@@ -58,11 +96,19 @@ export default function App() {
         return
       }
       const id = ++requestId.current
-      setBusy(true)
+      const busyTimer = setTimeout(() => setBusy(true), BUSY_DELAY_MS)
       const res = await client.solve(text)
+      clearTimeout(busyTimer)
       if (id !== requestId.current) return
       setBusy(false)
       setResponse(res)
+      if (res.ok && (record || !shownFirst.current)) setReveal({ id, animate: true })
+      else if (res.ok) setReveal((r) => (r.animate ? { id: r.id, animate: false } : r))
+      if (res.ok) shownFirst.current = true
+      if (!res.ok) {
+        setErrorVisible(record)
+        if (!record) setTimeout(() => id === requestId.current && setErrorVisible(true), TYPING_ERROR_DELAY_MS)
+      }
       if (record && res.ok) {
         setHistory((h) => {
           const next = addToHistory(h, text)
@@ -88,11 +134,41 @@ export default function App() {
   const pick = (q: string) => {
     setInput(q)
     void run(q, true)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
     inputRef.current?.focus()
   }
 
-  const cycleTheme = () => setTheme(theme === 'system' ? 'dark' : theme === 'dark' ? 'light' : 'system')
+  /** Switches theme with a circular reveal that grows out of the toggle button, where supported. */
+  const cycleTheme = () => {
+    const next: Theme = theme === 'system' ? 'dark' : theme === 'dark' ? 'light' : 'system'
+    if (
+      !('startViewTransition' in document) ||
+      prefersReducedMotion() ||
+      effectiveTheme(next) === effectiveTheme(theme)
+    ) {
+      setTheme(next)
+      return
+    }
+    const r = themeButton.current?.getBoundingClientRect()
+    const x = r ? r.left + r.width / 2 : window.innerWidth - 40
+    const y = r ? r.top + r.height / 2 : 40
+    const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))
+    const root = document.documentElement
+    // Freeze CSS colour transitions so the new view is captured in its final colours.
+    root.classList.add('switching')
+    const transition = document.startViewTransition(() => flushSync(() => setTheme(next)))
+    void transition.finished.finally(() => root.classList.remove('switching'))
+    transition.ready
+      .then(() =>
+        document.documentElement.animate(
+          { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+          { duration: 600, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', pseudoElement: '::view-transition-new(root)' },
+        ),
+      )
+      .catch(() => {})
+  }
+
+  const solution = response?.ok ? response.solution : null
 
   return (
     <div className="app">
@@ -101,39 +177,60 @@ export default function App() {
           <span className="logo" aria-hidden="true">
             ∑
           </span>
-          Math Solver
+          <span className="wordmark">Math Solver</span>
         </a>
         <button
+          ref={themeButton}
           type="button"
-          className="ghost small"
+          className="theme-toggle"
           onClick={cycleTheme}
-          aria-label={`Theme: ${theme}. Click to change.`}
+          aria-label={`Theme: ${THEME_LABEL[theme].toLowerCase()}. Click to change.`}
         >
-          {theme === 'system' ? 'Auto theme' : theme === 'dark' ? 'Dark' : 'Light'}
+          <ThemeIcon theme={theme} />
+          {THEME_LABEL[theme]}
         </button>
       </header>
 
       <main>
-        <h1 className="sr-only">Math Solver</h1>
+        <section className="hero" aria-labelledby="hero-title">
+          <h1 id="hero-title" className="hero-title rise" style={rise(0)}>
+            Type a problem. <em>See every step.</em>
+          </h1>
+          <p className="hero-sub rise" style={rise(1)}>
+            Equations, inequalities, systems, derivatives, integrals and limits, solved exactly and explained line by
+            line.
+          </p>
+        </section>
+
         <MathInput
           ref={inputRef}
           value={input}
-          onChange={setInput}
+          onChange={(v) => {
+            setInput(v)
+            setErrorVisible(false)
+          }}
           onSubmit={() => void run(input, true)}
           busy={busy}
         />
 
         <div aria-live="polite" className="result-region">
-          {response && !response.ok && input.trim() && (
-            <div className="card error" role="alert">
-              <strong>Can't solve that yet.</strong> {response.error}
+          {response && !response.ok && errorVisible && input.trim() && (
+            <div className="card error rise" role="alert">
+              <span className="error-icon" aria-hidden="true">
+                !
+              </span>
+              <p>
+                <strong>Can't solve that yet.</strong> {response.error}
+              </p>
             </div>
           )}
-          {response?.ok && <SolutionView solution={response.solution} ms={response.ms} />}
+          {solution && (
+            <SolutionView key={reveal.id} solution={solution} ms={response?.ms ?? 0} quiet={!reveal.animate} />
+          )}
         </div>
 
         {history.length > 0 && (
-          <section className="card history" aria-labelledby="history-title">
+          <section className="card history rise" style={rise(3)} aria-labelledby="history-title">
             <div className="section-head">
               <h2 id="history-title">Recent</h2>
               <button
@@ -159,10 +256,11 @@ export default function App() {
 
         <Examples onPick={pick} />
 
-        <section className="card help" aria-labelledby="help-title">
+        <section className="card help rise" style={rise(5)} aria-labelledby="help-title">
           <details>
             <summary>
               <h2 id="help-title">How to type problems</h2>
+              <span className="chevron" aria-hidden="true" />
             </summary>
             <ul>
               <li>
@@ -195,7 +293,8 @@ export default function App() {
       </main>
 
       <footer className="footer">
-        Everything runs in your browser. Exact answers where possible, decimals when not.
+        <span>Runs entirely in your browser.</span>
+        <span>Exact answers where possible, decimals when not.</span>
       </footer>
     </div>
   )
