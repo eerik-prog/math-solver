@@ -435,6 +435,12 @@ main {
     transform 0.15s var(--ease-out);
 }
 
+.keypad .more-key {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  border-color: var(--ink);
+}
+
 .keypad button:hover {
   background: var(--ink);
   border-color: var(--ink);

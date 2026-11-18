@@ -197,8 +197,7 @@ export default function App() {
             Type a problem. <em>See every step.</em>
           </h1>
           <p className="hero-sub rise" style={rise(1)}>
-            Equations, inequalities, systems, derivatives, integrals and limits, solved exactly and explained line by
-            line.
+            Type any math problem below. You get the answer and every step explained.
           </p>
         </section>
 
@@ -224,9 +223,7 @@ export default function App() {
               </p>
             </div>
           )}
-          {solution && (
-            <SolutionView key={reveal.id} solution={solution} ms={response?.ms ?? 0} quiet={!reveal.animate} />
-          )}
+          {solution && <SolutionView key={reveal.id} solution={solution} quiet={!reveal.animate} />}
         </div>
 
         {history.length > 0 && (

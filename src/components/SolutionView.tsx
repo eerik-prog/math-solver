@@ -57,8 +57,7 @@ function AnswerRow({ answer, index }: { answer: Answer; index: number }) {
 }
 
 /** `quiet` turns off entrance animations, for updates made while the person is still typing. */
-export function SolutionView({ solution, ms, quiet = false }: { solution: Solution; ms: number; quiet?: boolean }) {
-  const [showSteps, setShowSteps] = useState(true)
+export function SolutionView({ solution, quiet = false }: { solution: Solution; quiet?: boolean }) {
   const real = solution.answers.filter((a) => !a.complex)
   const complex = solution.answers.filter((a) => a.complex)
   return (
@@ -93,29 +92,16 @@ export function SolutionView({ solution, ms, quiet = false }: { solution: Soluti
             ))}
           </ul>
         )}
-        <p className="timing">Solved in {ms < 1 ? '<1' : Math.round(ms)} ms</p>
       </header>
 
       {solution.steps.length > 0 && (
         <section className="card rise" style={rise(1)} aria-labelledby="steps-title">
-          <div className="section-head">
-            <h2 id="steps-title">Step-by-step</h2>
-            <button
-              type="button"
-              className="ghost small"
-              onClick={() => setShowSteps((v) => !v)}
-              aria-expanded={showSteps}
-            >
-              {showSteps ? 'Hide' : 'Show'}
-            </button>
-          </div>
-          {showSteps && (
-            <ol className="steps">
-              {solution.steps.map((s, i) => (
-                <StepItem key={i} step={s} depth={0} index={i} />
-              ))}
-            </ol>
-          )}
+          <h2 id="steps-title">Step-by-step</h2>
+          <ol className="steps">
+            {solution.steps.map((s, i) => (
+              <StepItem key={i} step={s} depth={0} index={i} />
+            ))}
+          </ol>
         </section>
       )}
 

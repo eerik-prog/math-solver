@@ -13,18 +13,23 @@ export interface MathInputHandle {
 }
 
 /** Snippets inserted at the cursor; "|" marks where the cursor ends up. */
-const KEYS: Array<{ label: string; insert: string; title: string }> = [
+type Key = { label: string; insert: string; title: string }
+
+/** The keys most problems need; the rest sit behind "More". */
+const BASIC_KEYS: Key[] = [
   { label: '+', insert: ' + ', title: 'Plus' },
   { label: '−', insert: ' - ', title: 'Minus' },
   { label: '×', insert: '*', title: 'Times' },
   { label: '÷', insert: '/', title: 'Divide' },
+  { label: '=', insert: ' = ', title: 'Equals' },
   { label: 'x²', insert: '^2', title: 'Square' },
-  { label: 'xⁿ', insert: '^', title: 'Power' },
   { label: '√', insert: 'sqrt(|)', title: 'Square root' },
   { label: '( )', insert: '(|)', title: 'Parentheses' },
   { label: 'π', insert: 'pi', title: 'Pi' },
-  { label: 'e', insert: 'e', title: "Euler's number" },
-  { label: '=', insert: ' = ', title: 'Equals' },
+]
+
+const MORE_KEYS: Key[] = [
+  { label: 'xⁿ', insert: '^', title: 'Power' },
   { label: '≤', insert: ' <= ', title: 'Less than or equal' },
   { label: '≥', insert: ' >= ', title: 'Greater than or equal' },
   { label: 'sin', insert: 'sin(|)', title: 'Sine' },
@@ -88,6 +93,7 @@ export const MathInput = forwardRef<MathInputHandle, Props>(function MathInput(
   const inputRef = useRef<HTMLInputElement>(null)
   useImperativeHandle(ref, () => ({ focus: () => inputRef.current?.focus() }))
   const placeholder = useTypewriter(!value)
+  const [more, setMore] = useState(false)
 
   const insert = (snippet: string) => {
     const el = inputRef.current
@@ -149,11 +155,14 @@ export const MathInput = forwardRef<MathInputHandle, Props>(function MathInput(
       </div>
       {busy && <div className="progress" aria-hidden="true" />}
       <div className="keypad" role="group" aria-label="Insert symbols">
-        {KEYS.map((k) => (
+        {(more ? [...BASIC_KEYS, ...MORE_KEYS] : BASIC_KEYS).map((k) => (
           <button key={k.label} type="button" title={k.title} onClick={() => insert(k.insert)}>
             {k.label}
           </button>
         ))}
+        <button type="button" className="more-key" aria-expanded={more} onClick={() => setMore((m) => !m)}>
+          {more ? 'Less' : 'More'}
+        </button>
       </div>
     </form>
   )
