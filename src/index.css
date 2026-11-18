@@ -412,7 +412,7 @@ main {
 
 .keypad {
   display: grid;
-  grid-template-columns: repeat(9, 1fr);
+  grid-template-columns: repeat(10, 1fr);
   gap: 6px;
   margin-top: 12px;
   padding-top: 12px;

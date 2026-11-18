@@ -61,6 +61,15 @@ describe('App', () => {
     expect(input.value).toBe('x^2')
     await userEvent.click(screen.getByTitle('Square root'))
     expect(input.value).toBe('x^2sqrt()')
+    await userEvent.clear(input)
+    await userEvent.type(input, '2')
+    await userEvent.click(screen.getByTitle('Times'))
+    await userEvent.type(input, '3')
+    await userEvent.click(screen.getByTitle('Plus'))
+    await userEvent.type(input, '4')
+    await userEvent.click(screen.getByTitle('Minus'))
+    await userEvent.type(input, '1')
+    expect(input.value).toBe('2*3 + 4 - 1')
   })
 
   it('cycles the colour theme and remembers it', async () => {

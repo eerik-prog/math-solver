@@ -14,10 +14,13 @@ export interface MathInputHandle {
 
 /** Snippets inserted at the cursor; "|" marks where the cursor ends up. */
 const KEYS: Array<{ label: string; insert: string; title: string }> = [
+  { label: '+', insert: ' + ', title: 'Plus' },
+  { label: '−', insert: ' - ', title: 'Minus' },
+  { label: '×', insert: '*', title: 'Times' },
+  { label: '÷', insert: '/', title: 'Divide' },
   { label: 'x²', insert: '^2', title: 'Square' },
   { label: 'xⁿ', insert: '^', title: 'Power' },
   { label: '√', insert: 'sqrt(|)', title: 'Square root' },
-  { label: '÷', insert: '/', title: 'Divide' },
   { label: '( )', insert: '(|)', title: 'Parentheses' },
   { label: 'π', insert: 'pi', title: 'Pi' },
   { label: 'e', insert: 'e', title: "Euler's number" },
