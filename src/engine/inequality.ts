@@ -3,7 +3,8 @@ import { identify } from './identify'
 import { bisect, compile } from './numeric'
 import { type Poly, polyFromExpr, ratFromExpr } from './poly'
 import type { RelOp } from './parser'
-import { formatNumber, texNumber, toTex, toText } from './print'
+import { formatNumber, texNumber, toPlain, toTex, toText } from './print'
+import { Rational } from './rational'
 import { simplify } from './simplify'
 import { type Root, solvePolynomial } from './solve'
 import type { Answer, Solution, Step } from './types'
@@ -185,6 +186,14 @@ export function inequalitySolution(
   }
 }
 
+const OP_TEXT: Record<string, string> = { '<': '<', '>': '>', '<=': '≤', '>=': '≥', '!=': '≠' }
+const OP_WORDS: Record<string, string> = {
+  '<': 'less than',
+  '>': 'greater than',
+  '<=': 'less than or equal to',
+  '>=': 'greater than or equal to',
+}
+
 export function inequalityIntervals(
   L0: Expr,
   op: RelOp,
@@ -206,10 +215,23 @@ export function inequalityIntervals(
     const p = pl.sub(pr)
     const a = p.coef(1)
     const b = p.coef(0)
-    steps.push({
-      title: `Move the ${x} terms to the left and the numbers to the right`,
-      tex: `${toTex(simplify(mul(num(a), X)))} ${OP_TEX[op]} ${toTex(num(b.neg()))}`,
-    })
+    const sym_ = OP_TEX[op]
+    const say = (r: Rational) => r.toString().replace(/^-/, '−')
+    const lin = (k: Rational, c: Rational) => toTex(simplify(add(mul(num(k), X), num(c))))
+    let [a1, b1] = [pl.coef(1), pl.coef(0)]
+    const [a2, b2] = [pr.coef(1), pr.coef(0)]
+    if (!a2.isZero()) {
+      a1 = a1.sub(a2)
+      steps.push({
+        title: `${a2.sign() > 0 ? `Subtract ${toPlain(simplify(mul(num(a2), X)))} from` : `Add ${toPlain(simplify(mul(num(a2.neg()), X)))} to`} both sides. This gets all the ${x} terms on the left`,
+        tex: `${lin(a1, b1)} ${sym_} ${toTex(num(b2))}`,
+      })
+    }
+    if (!b1.isZero())
+      steps.push({
+        title: `${b1.sign() > 0 ? `Subtract ${say(b1)} from` : `Add ${say(b1.neg())} to`} both sides. This leaves the ${x} term on its own. Adding or subtracting never changes the inequality sign`,
+        tex: `${lin(a1, Rational.ZERO)} ${sym_} ${toTex(num(b.neg()))}`,
+      })
     const flip = a.sign() < 0
     const flipped: Record<string, RelOp> = { '<': '>', '>': '<', '<=': '>=', '>=': '<=' }
     const nop = flip ? (flipped[op] ?? op) : op
@@ -217,9 +239,13 @@ export function inequalityIntervals(
     if (!a.isOne())
       steps.push({
         title: flip
-          ? `Divide both sides by ${a.toString()}. Dividing by a negative number flips the inequality sign`
-          : `Divide both sides by ${a.toString()}`,
+          ? `Divide both sides by ${say(a)}. Dividing by a negative number flips the inequality sign, so ${OP_TEXT[op]} becomes ${OP_TEXT[nop]}`
+          : `Divide both sides by ${say(a)}. It is positive, so the inequality sign stays the same`,
         tex: `${x} ${OP_TEX[nop]} ${toTex(num(r))}`,
+      })
+    if (nop !== '!=')
+      steps.push({
+        title: `So ${x} can be any number ${OP_WORDS[nop]} ${say(r)}`,
       })
     const pt: Pt = { value: r.toNumber(), exact: num(r) }
     switch (nop) {

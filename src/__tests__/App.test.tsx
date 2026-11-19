@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { solve } from '../engine'
+import { readAs } from '../worker/readAs'
 
 // The real client runs the engine in a Web Worker; jsdom has none, so solve inline.
 vi.mock('../solverClient', () => ({
@@ -11,6 +12,10 @@ vi.mock('../solverClient', () => ({
     solve(input: string) {
       return Promise.resolve(solve(input))
     }
+    readAs(input: string) {
+      return Promise.resolve(readAs(input))
+    }
+    warm() {}
   },
 }))
 
@@ -30,7 +35,7 @@ describe('App', () => {
     fireEvent.submit(input.closest('form')!)
     expect(await screen.findByText('Solve for x')).toBeInTheDocument()
     expect(screen.getByText('Step-by-step')).toBeInTheDocument()
-    expect(screen.getByText('Subtract 3 from both sides')).toBeInTheDocument()
+    expect(screen.getByText(/^Subtract 3 from both sides/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy x = 4' })).toBeInTheDocument()
   })
 
@@ -61,6 +66,15 @@ describe('App', () => {
     expect(input.value).toBe('x^2')
     await userEvent.click(screen.getByTitle('Square root'))
     expect(input.value).toBe('x^2sqrt()')
+    await userEvent.clear(input)
+    await userEvent.type(input, '2')
+    await userEvent.click(screen.getByTitle('Times'))
+    await userEvent.type(input, '3')
+    await userEvent.click(screen.getByTitle('Plus'))
+    await userEvent.type(input, '4')
+    await userEvent.click(screen.getByTitle('Minus'))
+    await userEvent.type(input, '1')
+    expect(input.value).toBe('2*3 + 4 - 1')
   })
 
   it('cycles the colour theme and remembers it', async () => {

@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 
+// E2E_PORT lets the tests run next to another server that already uses the default port.
+const port = Number(process.env.E2E_PORT ?? 4173)
+const baseURL = `http://localhost:${port}`
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -7,7 +11,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: {
-    baseURL: 'http://localhost:4173',
+    baseURL,
     trace: 'off',
   },
   projects: [
@@ -15,8 +19,8 @@ export default defineConfig({
     { name: 'mobile', use: { ...devices['Pixel 7'] } },
   ],
   webServer: {
-    command: 'npm run build && npm run preview -- --port 4173 --strictPort',
-    url: 'http://localhost:4173',
+    command: `npm run build && npm run preview -- --port ${port} --strictPort`,
+    url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

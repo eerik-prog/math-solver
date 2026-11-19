@@ -24,7 +24,7 @@ import {
 import { solveLinear } from './linalg'
 import { numericallyEqual } from './numeric'
 import { Poly, factorPoly, polyFromExpr, ratFromExpr } from './poly'
-import { toTex, toText as textOf } from './print'
+import { toPlain, toTex } from './print'
 import { Rational } from './rational'
 import { expand, simplest, simplify } from './simplify'
 import type { Step } from './types'
@@ -59,6 +59,59 @@ function linear(u: Expr, x: string): { a: Rational; b: Rational } | null {
   return { a: p.coef(1), b: p.coef(0) }
 }
 
+function lowerFirst(s: string): string {
+  return /^[A-Z][a-z]/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s
+}
+
+/** One step for a part: its own explanation when it is a single step, else a summary with details inside. */
+function partStep(label: string, part: Expr, x: string, F: Expr, work: Step[]): Step {
+  if (work.length === 1 && !work[0].substeps?.length)
+    return {
+      title: label.startsWith('For ') ? `${label}: ${lowerFirst(work[0].title)}` : `${label}. ${work[0].title}`,
+      tex: work[0].tex,
+    }
+  return { title: label, tex: `${intTex(part, x)} = ${toTex(F)}`, substeps: work.length ? work : undefined }
+}
+
+const keepText = (c: Expr) =>
+  c.kind === 'num' && c.value.eq(Rational.MINUS_ONE)
+    ? 'Keep the minus sign in front'
+    : `Keep the ${toPlain(c)} in front`
+
+/** c·xⁿ with n ≠ −1: one power-rule step. */
+function monomialIntegral(e: Expr, x: string, steps: Step[]): Expr | null {
+  const X = sym(x)
+  let c: Expr = ONE
+  let n: Expr | null = null
+  if (isSym(e, x)) n = ONE
+  else if (e.kind === 'pow' && isSym(e.base, x) && !contains(e.exp, x)) n = e.exp
+  else if (e.kind === 'mul') {
+    const vars = e.factors.filter((f) => contains(f, x))
+    if (vars.length === 1) {
+      const v = vars[0]
+      if (isSym(v, x)) n = ONE
+      else if (v.kind === 'pow' && isSym(v.base, x) && !contains(v.exp, x)) n = v.exp
+      if (n) c = simplify(mul(...e.factors.filter((f) => f !== v)))
+    }
+  }
+  if (!n) return null
+  if (n.kind === 'num' && n.value.eq(Rational.MINUS_ONE)) return null
+  const n1 = simplify(add(n, ONE))
+  const F = simplify(mul(c, div(pow(X, n1), n1)))
+  const plainC = c.kind === 'num' && c.value.isOne()
+  const asPower =
+    n.kind === 'num' && (!n.value.isInteger() || n.value.sign() < 0)
+      ? `Write ${toPlain(simplify(pow(X, n)))} as a power: ${x}^${n.value.isInteger() ? n.value.toString() : `(${n.value.toString()})`}. `
+      : ''
+  const rule = 'Power rule: add 1 to the power, then divide by the new power'
+  const nTex = n.kind === 'num' && n.value.sign() < 0 ? `\\left(${toTex(n)}\\right)` : toTex(n)
+  steps.push({
+    title: plainC ? `${asPower}${rule}` : `${keepText(c)}. ${asPower}${rule}`,
+    tex: `${intTex(e, x)} = ${plainC ? '' : `${toTex(c)} \\cdot `}\\frac{${x}^{${nTex} + 1}}{${nTex} + 1} = ${toTex(F)}`,
+  })
+  return F
+}
+
 function integ(e: Expr, x: string, steps: Step[], depth: number): Expr | null {
   if (depth > MAX_DEPTH) return null
   e = simplify(e)
@@ -67,38 +120,41 @@ function integ(e: Expr, x: string, steps: Step[], depth: number): Expr | null {
 
   if (!contains(e, x)) {
     const F = simplify(mul(e, X))
-    steps.push({ title: 'The integral of a constant c is c·' + x, tex: `${lhs} = ${toTex(F)}` })
-    return F
-  }
-
-  // Polynomials: power rule term by term.
-  const p = polyFromExpr(e, x)
-  if (p && e.kind !== 'mul' && e.kind !== 'pow') {
-    const F = new Poly([Rational.ZERO, ...p.c.map((c, i) => c.div(Rational.of(i + 1)))]).toExpr(x)
     steps.push({
-      title: `Power rule: ∫${x}ⁿ d${x} = ${x}ⁿ⁺¹/(n+1)` + (e.kind === 'add' ? ', term by term' : ''),
+      title: `${toPlain(e)} is a constant. The integral of a constant k is k·${x}`,
       tex: `${lhs} = ${toTex(F)}`,
     })
     return F
   }
 
+  const mono = monomialIntegral(e, x, steps)
+  if (mono) return mono
+
   if (e.kind === 'add') {
-    const sub: Step[] = []
+    const work: Step[] = []
     const parts: Expr[] = []
     for (const t of e.terms) {
-      const r = integ(t, x, sub, depth + 1)
+      const w: Step[] = []
+      const r = integ(t, x, w, depth + 1)
       if (!r) {
         parts.length = 0
         break
       }
       parts.push(r)
+      work.push(partStep(`For ${toPlain(t)}`, t, x, r, w))
     }
     if (parts.length === e.terms.length) {
       const F = simplify(add(...parts))
       steps.push({
-        title: 'Sum rule: integrate each term separately',
-        tex: `${lhs} = ${e.terms.map((t) => intTex(t, x)).join(' + ')} = ${toTex(F)}`,
-        substeps: sub,
+        title: 'Integrate each term on its own, then add them up (the sum rule)',
+        tex: `${lhs} = ${e.terms.map((t) => intTex(t, x)).join(' + ')}`,
+      })
+      steps.push(...work)
+      const raw: Expr = { kind: 'add', terms: parts }
+      const rawTex = toTex(raw)
+      steps.push({
+        title: 'Add the results together',
+        tex: `${lhs} = ${rawTex === toTex(F) ? '' : `${rawTex} = `}${toTex(F)}`,
       })
       return F
     }
@@ -113,11 +169,19 @@ function integ(e: Expr, x: string, steps: Step[], depth: number): Expr | null {
       const r = integ(rest, x, sub, depth + 1)
       if (r) {
         const F = simplify(mul(c, r))
-        steps.push({
-          title: 'Constant multiple rule: move the constant outside the integral',
-          tex: `${lhs} = ${toTex(c)} ${intTex(rest, x)} = ${toTex(F)}`,
-          substeps: sub,
-        })
+        if (sub.length === 1 && !sub[0].substeps?.length) {
+          steps.push({
+            title: `${keepText(c)}. ${sub[0].title}`,
+            tex: `${lhs} = ${toTex(c)} ${intTex(rest, x)} = ${toTex(F)}`,
+          })
+        } else {
+          steps.push({
+            title: `${keepText(c)}, and integrate the rest`,
+            tex: `${lhs} = ${toTex(c)} ${intTex(rest, x)}`,
+          })
+          steps.push(...sub)
+          steps.push({ title: `Multiply by ${toPlain(c)}`, tex: `${lhs} = ${toTex(F)}` })
+        }
         return F
       }
       return null
@@ -154,7 +218,11 @@ function integ(e: Expr, x: string, steps: Step[], depth: number): Expr | null {
       const sub: Step[] = []
       const F = integ(ex, x, sub, depth + 1)
       if (F) {
-        steps.push({ title: 'Expand the integrand first', tex: `${lhs} = ${intTex(ex, x)}`, substeps: sub })
+        steps.push({
+          title: 'Multiply out first, so each term can be integrated on its own',
+          tex: `${lhs} = ${intTex(ex, x)}`,
+        })
+        steps.push(...sub)
         return F
       }
     }
@@ -171,10 +239,12 @@ function tableIntegral(e: Expr, x: string): { F: Expr; rule: string } | null {
   const X = sym(x)
   const over = (lin: { a: Rational }, F: Expr) => simplify(mul(num(lin.a.inv()), F))
   const chainNote = (lin: { a: Rational; b: Rational }) =>
-    lin.a.isOne() && lin.b.isZero() ? '' : ` (the inner function is linear, so divide by its slope ${lin.a.toString()})`
+    lin.a.isOne()
+      ? ''
+      : `. The inside has ${lin.a.toString().replace(/^-/, '−')}${x} in it, so also divide by ${lin.a.toString().replace(/^-/, '−')}`
 
   if (e.kind === 'sym') {
-    return { F: simplify(div(pow(X, 2), num(2))), rule: 'Power rule' }
+    return { F: simplify(div(pow(X, 2), num(2))), rule: 'Power rule: add 1 to the power, then divide by the new power' }
   }
 
   if (e.kind === 'pow') {
@@ -186,13 +256,13 @@ function tableIntegral(e: Expr, x: string): { F: Expr; rule: string } | null {
         if (exp.kind === 'num' && exp.value.eq(Rational.MINUS_ONE)) {
           return {
             F: over(lin, fn('ln', fn('abs', base))),
-            rule: `∫ 1/u du = ln|u|${chainNote(lin)}`,
+            rule: `The integral of 1/u is ln|u|${chainNote(lin)}`,
           }
         }
         const n1 = simplify(add(exp, ONE))
         return {
           F: over(lin, div(pow(base, n1), n1)),
-          rule: `Power rule: ∫uⁿ du = uⁿ⁺¹/(n+1)${chainNote(lin)}`,
+          rule: `Power rule: add 1 to the power, then divide by the new power${chainNote(lin)}`,
         }
       }
       // trig squares
@@ -202,21 +272,24 @@ function tableIntegral(e: Expr, x: string): { F: Expr; rule: string } | null {
         if (l) {
           switch (base.name) {
             case 'sec':
-              return { F: over(l, fn('tan', u)), rule: '∫sec²(u) du = tan(u)' }
+              return { F: over(l, fn('tan', u)), rule: 'The integral of sec² is tan' }
             case 'csc':
-              return { F: over(l, neg(fn('cot', u))), rule: '∫csc²(u) du = −cot(u)' }
+              return { F: over(l, neg(fn('cot', u))), rule: 'The integral of csc² is −cot' }
             case 'sin':
               return {
                 F: simplify(sub(div(X, num(2)), over(l, div(fn('sin', mul(num(2), u)), num(4))))),
-                rule: 'Use the identity sin²(u) = (1 − cos 2u)/2',
+                rule: 'Rewrite sin² with the identity sin²(u) = (1 − cos 2u)/2, then integrate each part',
               }
             case 'cos':
               return {
                 F: simplify(add(div(X, num(2)), over(l, div(fn('sin', mul(num(2), u)), num(4))))),
-                rule: 'Use the identity cos²(u) = (1 + cos 2u)/2',
+                rule: 'Rewrite cos² with the identity cos²(u) = (1 + cos 2u)/2, then integrate each part',
               }
             case 'tan':
-              return { F: simplify(sub(over(l, fn('tan', u)), X)), rule: 'Use the identity tan²(u) = sec²(u) − 1' }
+              return {
+                F: simplify(sub(over(l, fn('tan', u)), X)),
+                rule: 'Rewrite tan² as sec² − 1, then integrate each part',
+              }
           }
         }
       }
@@ -230,14 +303,14 @@ function tableIntegral(e: Expr, x: string): { F: Expr; rule: string } | null {
             const k = simplify(sqrt(num(pc.neg())))
             return {
               F: simplify(div(fn('asin', mul(X, sqrt(num(pc.neg().div(r))))), k)),
-              rule: '∫ 1/√(a² − u²) du = arcsin(u/a)',
+              rule: 'This matches the arcsin pattern: the integral of 1/√(a² − u²) is arcsin(u/a)',
             }
           }
           if (pc.sign() > 0) {
             const k = simplify(sqrt(num(pc)))
             return {
               F: simplify(div(fn('ln', fn('abs', add(mul(k, X), sqrt(base)))), k)),
-              rule: '∫ 1/√(u² + a²) du = ln|u + √(u² + a²)|',
+              rule: 'This matches the pattern: the integral of 1/√(u² + a²) is ln|u + √(u² + a²)|',
             }
           }
         }
@@ -247,10 +320,10 @@ function tableIntegral(e: Expr, x: string): { F: Expr; rule: string } | null {
     if (!contains(base, x)) {
       const lin = linear(exp, x)
       if (lin) {
-        if (isSym(base, 'e')) return { F: over(lin, e), rule: `∫eᵘ du = eᵘ${chainNote(lin)}` }
+        if (isSym(base, 'e')) return { F: over(lin, e), rule: `The integral of eᵘ is eᵘ itself${chainNote(lin)}` }
         return {
           F: over(lin, div(e, fn('ln', base))),
-          rule: `∫aᵘ du = aᵘ / ln(a)${chainNote(lin)}`,
+          rule: `The integral of aᵘ is aᵘ ÷ ln(a)${chainNote(lin)}`,
         }
       }
     }
@@ -264,54 +337,72 @@ function tableIntegral(e: Expr, x: string): { F: Expr; rule: string } | null {
     const lnAbs = (v: Expr) => fn('ln', fn('abs', v))
     switch (e.name) {
       case 'sin':
-        return { F: over(lin, neg(fn('cos', u))), rule: `∫sin(u) du = −cos(u)${n}` }
+        return { F: over(lin, neg(fn('cos', u))), rule: `The integral of sin is −cos${n}` }
       case 'cos':
-        return { F: over(lin, fn('sin', u)), rule: `∫cos(u) du = sin(u)${n}` }
+        return { F: over(lin, fn('sin', u)), rule: `The integral of cos is sin${n}` }
       case 'tan':
-        return { F: over(lin, neg(lnAbs(fn('cos', u)))), rule: `∫tan(u) du = −ln|cos(u)|${n}` }
+        return { F: over(lin, neg(lnAbs(fn('cos', u)))), rule: `The integral of tan(u) is −ln|cos(u)|${n}` }
       case 'cot':
-        return { F: over(lin, lnAbs(fn('sin', u))), rule: `∫cot(u) du = ln|sin(u)|${n}` }
+        return { F: over(lin, lnAbs(fn('sin', u))), rule: `The integral of cot(u) is ln|sin(u)|${n}` }
       case 'sec':
-        return { F: over(lin, lnAbs(add(fn('sec', u), fn('tan', u)))), rule: `∫sec(u) du = ln|sec(u) + tan(u)|${n}` }
+        return {
+          F: over(lin, lnAbs(add(fn('sec', u), fn('tan', u)))),
+          rule: `The integral of sec(u) is ln|sec(u) + tan(u)|${n}`,
+        }
       case 'csc':
         return {
           F: over(lin, neg(lnAbs(add(fn('csc', u), fn('cot', u))))),
-          rule: `∫csc(u) du = −ln|csc(u) + cot(u)|${n}`,
+          rule: `The integral of csc(u) is −ln|csc(u) + cot(u)|${n}`,
         }
       case 'sinh':
-        return { F: over(lin, fn('cosh', u)), rule: `∫sinh(u) du = cosh(u)${n}` }
+        return { F: over(lin, fn('cosh', u)), rule: `The integral of sinh is cosh${n}` }
       case 'cosh':
-        return { F: over(lin, fn('sinh', u)), rule: `∫cosh(u) du = sinh(u)${n}` }
+        return { F: over(lin, fn('sinh', u)), rule: `The integral of cosh is sinh${n}` }
       case 'tanh':
-        return { F: over(lin, fn('ln', fn('cosh', u))), rule: `∫tanh(u) du = ln(cosh(u))${n}` }
+        return { F: over(lin, fn('ln', fn('cosh', u))), rule: `The integral of tanh(u) is ln(cosh(u))${n}` }
       case 'ln':
-        return { F: over(lin, sub(mul(u, fn('ln', u)), u)), rule: `∫ln(u) du = u·ln(u) − u (integration by parts)${n}` }
+        return {
+          F: over(lin, sub(mul(u, fn('ln', u)), u)),
+          rule: `The integral of ln(u) is u·ln(u) − u (found with integration by parts)${n}`,
+        }
       case 'log':
         if (contains(e.args[1], x)) return null
         return {
           F: over(lin, div(sub(mul(u, fn('ln', u)), u), fn('ln', e.args[1]))),
-          rule: `∫log_b(u) du = (u·ln(u) − u)/ln(b)${n}`,
+          rule: `The integral of log_b(u) is (u·ln(u) − u) ÷ ln(b)${n}`,
         }
       case 'asin':
         return {
           F: over(lin, add(mul(u, fn('asin', u)), sqrt(sub(ONE, pow(u, 2))))),
-          rule: `∫arcsin(u) du = u·arcsin(u) + √(1 − u²)${n}`,
+          rule: `The integral of arcsin(u) is u·arcsin(u) + √(1 − u²)${n}`,
         }
       case 'acos':
         return {
           F: over(lin, sub(mul(u, fn('acos', u)), sqrt(sub(ONE, pow(u, 2))))),
-          rule: `∫arccos(u) du = u·arccos(u) − √(1 − u²)${n}`,
+          rule: `The integral of arccos(u) is u·arccos(u) − √(1 − u²)${n}`,
         }
       case 'atan':
         return {
           F: over(lin, sub(mul(u, fn('atan', u)), div(fn('ln', add(ONE, pow(u, 2))), num(2)))),
-          rule: `∫arctan(u) du = u·arctan(u) − ln(1 + u²)/2${n}`,
+          rule: `The integral of arctan(u) is u·arctan(u) − ln(1 + u²)/2${n}`,
         }
       case 'abs':
-        return { F: over(lin, div(mul(u, fn('abs', u)), num(2))), rule: `∫|u| du = u·|u|/2${n}` }
+        return { F: over(lin, div(mul(u, fn('abs', u)), num(2))), rule: `The integral of |u| is u·|u|/2${n}` }
     }
   }
   return null
+}
+
+/** (x − 1)(x + 1) for a denominator that splits into several factors. */
+function polyFactoredText(p: Poly, x: string): string | null {
+  const { content, factors } = factorPoly(p)
+  if (factors.length < 2 && (factors[0]?.mult ?? 1) === 1) return null
+  const parts = factors.map((f) => {
+    const t = `\\left(${toTex(f.poly.toExpr(x))}\\right)`
+    return f.mult > 1 ? `${t}^{${f.mult}}` : t
+  })
+  const c = content.isOne() ? '' : content.eq(Rational.MINUS_ONE) ? '-' : toTex(num(content))
+  return c + parts.join('')
 }
 
 // ---------------------------------------------------------------------------
@@ -332,7 +423,7 @@ function integrateRational(e: Expr, x: string): { F: Expr; steps: Step[] } | nul
     const Qe = q.toExpr(x)
     pieces.push(Qe)
     steps.push({
-      title: 'The numerator has a degree at least that of the denominator, so divide the polynomials first',
+      title: 'The top has a power at least as high as the bottom, so divide first (polynomial long division)',
       tex: `\\frac{${toTex(rf.num.toExpr(x))}}{${toTex(Dn.toExpr(x))}} = ${toTex(Qe)} + \\frac{${toTex(r.toExpr(x))}}{${toTex(Dn.toExpr(x))}}`,
     })
     const F = new Poly([Rational.ZERO, ...q.c.map((c, i) => c.div(Rational.of(i + 1)))]).toExpr(x)
@@ -382,7 +473,10 @@ function integrateRational(e: Expr, x: string): { F: Expr; steps: Step[] } | nul
             ? simplify(mul(num(A0.div(p)), fn('ln', fn('abs', fx))))
             : simplify(mul(num(A0.div(p.mul(Rational.of(1 - s.power)))), pow(fx, 1 - s.power)))
         sub.push({
-          title: s.power === 1 ? '∫ A/(px + q) dx = (A/p)·ln|px + q|' : 'Power rule with u = px + q',
+          title:
+            s.power === 1
+              ? `The integral of 1/u is ln|u|. Here u = ${toPlain(fx)}${p.isOne() ? '' : `, so also divide by ${p.toString()}`}`
+              : `Power rule with u = ${toPlain(fx)}: add 1 to the power, then divide by the new power`,
           tex: `${intTex(termE, x)} = ${toTex(F)}`,
         })
         terms.push(F)
@@ -407,23 +501,31 @@ function integrateRational(e: Expr, x: string): { F: Expr; steps: Step[] } | nul
         )
         const F = simplify(add(lnPart, atanPart))
         sub.push({
-          title: 'Split into a logarithm part (numerator ∝ derivative of the denominator) and an arctangent part',
+          title:
+            'Split the top into a part that is a multiple of the derivative of the bottom (gives ln) and a number left over (gives arctan)',
           tex: `${intTex(termE, x)} = ${toTex(F)}`,
         })
         terms.push(F)
       }
     }
     if (decomposition.length > 1 || factors.length > 1 || factors[0]?.mult > 1) {
+      const factored = polyFactoredText(Dn, x)
+      if (factored)
+        steps.push({
+          title: 'Factor the bottom of the fraction',
+          tex: `${toTex(Dn.toExpr(x))} = ${factored}`,
+        })
       steps.push({
-        title: 'Factor the denominator and split into partial fractions',
+        title: 'Split the fraction into simpler fractions, one for each factor (partial fractions)',
         tex: `\\frac{${toTex(N.toExpr(x))}}{${toTex(Dn.toExpr(x))}} = ${decomposition.map(toTex).join(' + ').replace(/\+ -/g, '- ')}`,
       })
     }
-    steps.push({ title: 'Integrate each fraction', substeps: sub, tex: undefined })
+    steps.push({ title: 'Integrate each simple fraction on its own', substeps: sub, tex: undefined })
   } else if (pieces.length) {
-    steps.push({ title: 'Integrate the polynomial with the power rule' })
+    steps.push({ title: 'Integrate what is left with the power rule' })
   }
   const F = simplify(add(...terms))
+  if (terms.length > 1) steps.push({ title: 'Add the results together', tex: `${intTex(e, x)} = ${toTex(F)}` })
   return { F, steps }
 }
 
@@ -484,11 +586,22 @@ function uSubstitution(e: Expr, x: string, depth: number): { F: Expr; steps: Ste
       F,
       steps: [
         {
-          title: `Substitute ${u} = ${textOf(g)}, so d${u} = (${textOf(dg)}) d${x}`,
+          title: `Notice that ${toPlain(dg)} is (a multiple of) the derivative of ${toPlain(g)}. That means a substitution will work: let ${u} = ${toPlain(g)}`,
+          tex: `${u} = ${toTex(g)}`,
+        },
+        {
+          title: `Take the derivative of ${u}, so we can swap d${x} for d${u}`,
+          tex: `d${u} = ${dg.kind === 'add' ? `\\left(${toTex(dg)}\\right)` : toTex(dg)}\\,d${x}`,
+        },
+        {
+          title: `Rewrite the whole integral using ${u}. Every ${x} should disappear`,
           tex: `${intTex(e, x)} = ${intTex(inner, u)}`,
         },
-        { title: `Integrate with respect to ${u}`, tex: `${intTex(inner, u)} = ${toTex(Fu)}`, substeps: sub },
-        { title: `Substitute back ${u} = ${textOf(g)}`, tex: `${toTex(F)}` },
+        partStep(`Integrate with respect to ${u}`, inner, u, Fu, sub),
+        {
+          title: `Put ${toPlain(g)} back in place of ${u}`,
+          tex: `${toTex(substitute(Fu, u, g)) === toTex(F) ? '' : `${toTex(substitute(Fu, u, g))} = `}${toTex(F)}`,
+        },
       ],
     }
   }
@@ -530,16 +643,53 @@ function byParts(e: Expr, x: string, depth: number): { F: Expr; steps: Step[] } 
         const sign = k % 2 === 0 ? 1 : -1
         terms.push(simplify(mul(num(sign), deriv.toExpr(x), ints[k])))
         sub.push({
-          title: `${k === 0 ? 'u' : 'u' + '′'.repeat(k)} = ${textOf(deriv.toExpr(x))}, ${'∫'.repeat(k + 1)}dv = ${textOf(ints[k])}`,
+          title: `Row ${k + 1}: ${k === 0 ? 'u' : `derivative ${k} of u`} = ${toPlain(deriv.toExpr(x))}, integral ${k + 1} of dv = ${toPlain(ints[k])}. Multiply them with sign ${sign > 0 ? '+' : '−'}`,
+          tex: `${sign > 0 ? '+' : '-'}\\left(${toTex(deriv.toExpr(x))}\\right) \\cdot ${ints[k].kind === 'add' ? `\\left(${toTex(ints[k])}\\right)` : toTex(ints[k])}`,
         })
         deriv = deriv.derivative()
       }
       const F = simplify(add(...terms))
+      const Pe = P.toExpr(x)
+      const dP = P.derivative().toExpr(x)
+      const intro: Step[] = [
+        {
+          title:
+            'This is a product of two different kinds of function, so use integration by parts: ∫u dv = u·v − ∫v du',
+          tex: `\\int u\\,dv = u v - \\int v\\,du`,
+        },
+        {
+          title: `Choose u = ${toPlain(Pe)}, because it gets simpler when you take its derivative. The rest is dv = ${toPlain(T)} d${x}`,
+          tex: `u = ${toTex(Pe)},\\quad dv = ${toTex(T)}\\,d${x}`,
+        },
+        {
+          title: `Find du (take the derivative of u) and v (integrate dv)`,
+          tex: `du = ${dP.kind === 'add' ? `\\left(${toTex(dP)}\\right)` : toTex(dP)}\\,d${x},\\quad v = ${toTex(ints[0])}`,
+        },
+      ]
+      if (P.degree === 1) {
+        const vdu = simplify(mul(ints[0], dP))
+        return {
+          F,
+          steps: [
+            ...intro,
+            {
+              title: 'Put them into the formula u·v − ∫v du',
+              tex: `${intTex(e, x)} = ${toTex(simplify(mul(Pe, ints[0])))} - ${intTex(vdu, x)}`,
+            },
+            {
+              title: 'Work out the integral that is left. It is simpler than the one we started with',
+              tex: `${intTex(vdu, x)} = ${toTex(simplify(mul(dP, ints[1])))}`,
+            },
+            { title: 'Put it all together', tex: `${intTex(e, x)} = ${toTex(F)}` },
+          ],
+        }
+      }
       return {
         F,
         steps: [
+          ...intro,
           {
-            title: `Integration by parts (∫u dv = uv − ∫v du) with u = ${textOf(P.toExpr(x))} and dv = ${textOf(T)} d${x}, repeated until u′ = 0`,
+            title: `The integral that is left still has ${x} in it, so repeat integration by parts until u becomes a number. A table keeps track: keep taking derivatives of u and integrals of dv, with signs + − + …`,
             tex: `${intTex(e, x)} = ${toTex(F)}`,
             substeps: sub,
           },
@@ -559,11 +709,19 @@ function byParts(e: Expr, x: string, depth: number): { F: Expr; steps: Step[] } 
         F,
         steps: [
           {
-            title: `Integration by parts with u = ${textOf(T)} and dv = ${textOf(P.toExpr(x))} d${x}, so du = ${textOf(dT)} d${x} and v = ${textOf(V)}`,
+            title: `We know the derivative of ${toPlain(T)} but not an easy integral of it, so use integration by parts: ∫u dv = u·v − ∫v du`,
+            tex: `\\int u\\,dv = u v - \\int v\\,du`,
+          },
+          {
+            title: `Choose u = ${toPlain(T)} and dv = ${toPlain(P.toExpr(x))} d${x}. Then find du (derivative of u) and v (integral of dv)`,
+            tex: `du = ${toTex(dT)}\\,d${x},\\quad v = ${toTex(V)}`,
+          },
+          {
+            title: 'Put them into the formula u·v − ∫v du',
             tex: `${intTex(e, x)} = ${toTex(simplify(mul(V, T)))} - ${intTex(rest, x)}`,
           },
-          { title: 'Evaluate the remaining integral', tex: `${intTex(rest, x)} = ${toTex(R)}`, substeps: sub },
-          { title: 'Combine', tex: toTex(F) },
+          partStep('Work out the integral that is left', rest, x, R, sub),
+          { title: 'Put it all together', tex: `${intTex(e, x)} = ${toTex(F)}` },
         ],
       }
     }
@@ -591,7 +749,8 @@ function byParts(e: Expr, x: string, depth: number): { F: Expr; steps: Step[] } 
         F,
         steps: [
           {
-            title: 'Integrate by parts twice; the original integral reappears, so solve for it',
+            title:
+              'Use integration by parts twice. The integral we started with comes back, so treat it like an unknown and solve for it',
             tex: `${intTex(e, x)} = ${toTex(F)}`,
           },
         ],

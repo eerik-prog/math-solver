@@ -2,19 +2,89 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Math Solver: free answers with every step explained</title>
     <meta
       name="description"
-      content="Solve equations, inequalities, systems, derivatives, integrals and limits with step-by-step explanations."
+      content="Type a math problem and see the exact answer, every step in plain language, and a graph. Equations, inequalities, systems, derivatives, integrals and limits. Free, and it runs in your browser."
     />
+    <link rel="canonical" href="https://eerik-prog.github.io/math-solver/" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
     <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
     <meta name="color-scheme" content="light dark" />
-    <title>Math Solver</title>
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Math Solver" />
+    <meta property="og:title" content="Math Solver: free answers with every step explained" />
+    <meta
+      property="og:description"
+      content="Type a math problem and see the exact answer, every step in plain language, and a graph. Free, and it runs in your browser."
+    />
+    <meta property="og:url" content="https://eerik-prog.github.io/math-solver/" />
+    <meta property="og:image" content="https://eerik-prog.github.io/math-solver/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Math Solver: type a problem, see every step. The equation x² − 5x + 6 = 0 with the answers x = 2 and x = 3."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Math Solver: free answers with every step explained" />
+    <meta
+      name="twitter:description"
+      content="Type a math problem and see the exact answer, every step in plain language, and a graph. Free, and it runs in your browser."
+    />
+    <meta name="twitter:image" content="https://eerik-prog.github.io/math-solver/og-image.png" />
+    <meta
+      name="twitter:image:alt"
+      content="Math Solver: type a problem, see every step. The equation x² − 5x + 6 = 0 with the answers x = 2 and x = 3."
+    />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Math Solver",
+        "url": "https://eerik-prog.github.io/math-solver/",
+        "description": "Type a math problem and see the exact answer, every step in plain language, and a graph. Equations, inequalities, systems, derivatives, integrals and limits.",
+        "image": "https://eerik-prog.github.io/math-solver/og-image.png",
+        "applicationCategory": "EducationalApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript",
+        "inLanguage": "en",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "audience": { "@type": "EducationalAudience", "educationalRole": "student" },
+        "featureList": [
+          "Exact answers to equations, inequalities and systems",
+          "Derivatives, integrals and limits",
+          "Every step explained in plain language",
+          "Interactive graphs",
+          "Works offline"
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <p
+        style="
+          max-width: 32rem;
+          margin: 3rem auto;
+          padding: 0 1rem;
+          font:
+            16px/1.5 system-ui,
+            sans-serif;
+        "
+      >
+        Math Solver runs in your browser, so it needs JavaScript. Please turn JavaScript on and reload the page.
+      </p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

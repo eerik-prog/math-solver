@@ -1,6 +1,6 @@
-import { evaluateProblem } from './arithmetic'
+import { evaluateProblem, literalTex } from './arithmetic'
 import { expandProblem, factorProblem, pickVariable, simplifyProblem, tidy } from './algebra'
-import { nthDerivative, ordinal } from './diff'
+import { differentiate, nthDerivative, ordinal } from './diff'
 import { type Expr, INF, add, contains, freeSymbols, mul, neg, num, substitute } from './expr'
 import { identify } from './identify'
 import { inequalityIntervals, inequalitySolution, intersectIntervals, OP_TEX } from './inequality'
@@ -8,7 +8,7 @@ import { antiderivative } from './integrate'
 import { solveLimit } from './limit'
 import { compile, integrateNumeric } from './numeric'
 import { type Relation, normalizeInput, parseExpression, parseRelation, splitRelation } from './parser'
-import { formatNumber, texNumber, toTex, toText } from './print'
+import { formatNumber, texNumber, toPlain, toTex, toText } from './print'
 import { MathError } from './rational'
 import { simplest, simplify } from './simplify'
 import { solveEquationProblem } from './solve'
@@ -39,6 +39,8 @@ const EXAMPLE_FOR: Record<string, string> = {
   compute: 'compute 12 * 7',
   what: 'what is 15% * 80',
 }
+
+const OP_TEXT_PLAIN: Record<string, string> = { '<': '<', '>': '>', '<=': '≤', '>=': '≥', '!=': '≠', '=': '=' }
 
 const WRT = String.raw`(?:\s+(?:with\s+respect\s+to|wrt|w\.r\.t\.?)\s+([a-zA-Z]))?`
 
@@ -97,11 +99,14 @@ function relationProblem(text: string, hint?: string): Solution {
     const i1 = inequalityIntervals(a, r1.op, mid, x, s1, notes)
     const i2 = inequalityIntervals(mid, r2.op, b, x, s2, notes)
     steps.push({
-      title: `Split into two inequalities. First: ${toText(simplify(a))} ${r1.op} ${toText(simplify(mid))}`,
+      title: `A double inequality is two inequalities at once. Solve them one at a time. First: ${toPlain(simplify(a))} ${OP_TEXT_PLAIN[r1.op]} ${toPlain(simplify(mid))}`,
       substeps: s1,
     })
-    steps.push({ title: `Second: ${toText(simplify(mid))} ${r2.op} ${toText(simplify(b))}`, substeps: s2 })
-    steps.push({ title: 'Both must hold, so take the overlap of the two solution sets' })
+    steps.push({
+      title: `Second: ${toPlain(simplify(mid))} ${OP_TEXT_PLAIN[r2.op]} ${toPlain(simplify(b))}`,
+      substeps: s2,
+    })
+    steps.push({ title: `Both have to be true at the same time, so keep only the ${x} values that work for both` })
     const ivs = intersectIntervals(i1, i2)
     return inequalitySolution(
       a,
@@ -170,7 +175,7 @@ function derivativeProblem(exprText: string, order: number, hint?: string): Solu
   if (order === 1) {
     const last = steps[steps.length - 1]
     if (!last || !last.tex?.endsWith(toTex(res)))
-      steps.push({ title: 'Simplify', tex: `${op}\\left[${toTex(raw)}\\right] = ${toTex(res)}` })
+      steps.push({ title: 'Tidy up the answer', tex: `${op}\\left[${toTex(raw)}\\right] = ${toTex(res)}` })
   }
   const vars = freeSymbols(e)
   vars.delete(x)
@@ -257,7 +262,12 @@ function integralProblem(spec: IntegralSpec): Solution {
       )
     }
     steps.push(...result.steps)
-    steps.push({ title: 'Add the constant of integration C', tex: `\\int ${bodyTex}\\,d${x} = ${toTex(result.F)} + C` })
+    steps.push({
+      title: 'Add + C. A constant disappears when you take a derivative, so any constant could be added to the answer',
+      tex: `\\int ${bodyTex}\\,d${x} = ${toTex(result.F)} + C`,
+    })
+    const check = derivativeCheck(result.F, e, x)
+    if (check) steps.push(check)
     answers.push({ tex: `${toTex(result.F)} + C`, text: `${toText(result.F)} + C` })
     return {
       kind: 'integral',
@@ -308,11 +318,28 @@ function integralProblem(spec: IntegralSpec): Solution {
       const v = compile(val, '_')(0)
       if (Number.isFinite(v) && Math.abs(v - numeric.value) <= 1e-6 * Math.max(1, Math.abs(v))) {
         exact = val
-        steps.push({
-          title:
-            'Apply the Fundamental Theorem of Calculus: evaluate the antiderivative at the upper bound minus the lower bound',
-          tex: `\\left[${toTex(result.F)}\\right]_{${toTex(a)}}^{${toTex(b)}} = \\left(${toTex(Fb)}\\right) - \\left(${toTex(Fa)}\\right) = ${toTex(val)}`,
-        })
+        const put = (at: Expr, value: Expr) => {
+          const raw = substitute(spreadFraction(result.F), x, at)
+          const shown = literalTex(raw, { stack: true }) ?? toTex(raw)
+          return `F(${toTex(at)}) = ${shown === toTex(value) ? '' : `${shown} = `}${toTex(value)}`
+        }
+        const wrap = (t: Expr) =>
+          (t.kind === 'num' && t.value.sign() >= 0) || t.kind === 'sym' ? toTex(t) : `\\left(${toTex(t)}\\right)`
+        steps.push(
+          {
+            title: `Call the antiderivative F(${x}). For a definite integral there is no need for + C`,
+            tex: `F(${x}) = ${toTex(result.F)}`,
+          },
+          { title: `Put the top limit, ${x} = ${toPlain(b)}, into F`, tex: put(b, Fb) },
+          { title: `Put the bottom limit, ${x} = ${toPlain(a)}, into F`, tex: put(a, Fa) },
+          {
+            title: 'Subtract: top minus bottom. This is the Fundamental Theorem of Calculus',
+            tex: `\\int_{${toTex(a)}}^{${toTex(b)}} ${bodyTex}\\,d${x} = F(${toTex(b)}) - F(${toTex(a)}) = ${wrap(Fb)} - ${wrap(Fa)} = ${toTex(val)}`,
+          },
+        )
+        notes.push(
+          `This is the area between the graph and the x-axis from ${x} = ${toPlain(a)} to ${x} = ${toPlain(b)}. Parts below the axis count as negative.`,
+        )
       }
     }
   }
@@ -326,8 +353,8 @@ function integralProblem(spec: IntegralSpec): Solution {
     }
     steps.push({
       title: result
-        ? 'Evaluate numerically (adaptive Gauss–Kronrod quadrature)'
-        : 'No elementary antiderivative was found, so evaluate numerically (adaptive Gauss–Kronrod quadrature)',
+        ? 'Estimate the value numerically: add up the area of many thin slices under the graph (adaptive Gauss–Kronrod quadrature)'
+        : 'There is no simple formula for this antiderivative, so estimate the area numerically: add up many thin slices under the graph (adaptive Gauss–Kronrod quadrature)',
       tex: `${problemTex} \\approx ${texNumber(numeric.value)}`,
     })
     exact = identify(numeric.value)
@@ -355,6 +382,21 @@ function integralProblem(spec: IntegralSpec): Solution {
       shade: [finiteA, finiteB],
       xRange: [Math.min(finiteA, finiteB) - pad, Math.max(finiteA, finiteB) + pad],
     },
+  }
+}
+
+/** Shows that the antiderivative is right by taking its derivative. */
+function derivativeCheck(F: Expr, f: Expr, x: string): Step | null {
+  try {
+    const back = simplest(differentiate(F, x))
+    if (toTex(back).length > 160) return null
+    const same = toTex(back) === toTex(simplify(f)) || toTex(back) === toTex(tidy(f))
+    return {
+      title: `Check: take the derivative of the answer. ${same ? 'It gives back' : 'It simplifies to'} the function we started with ✓`,
+      tex: `\\frac{d}{d${x}}\\left[${toTex(F)} + C\\right] = ${toTex(back)}`,
+    }
+  } catch {
+    return null
   }
 }
 
@@ -502,4 +544,19 @@ export function solve(input: string): SolveResponse {
     if (!(err instanceof MathError)) console.error(err)
     return { ok: false, error: msg, ms: performance.now() - start }
   }
+}
+
+/** x³/3 is stored as (1/3)·x³. Write it as a fraction again so F(3) shows as 3³/3. */
+function spreadFraction(e: Expr): Expr {
+  if (e.kind === 'add') return { kind: 'add', terms: e.terms.map(spreadFraction) }
+  if (e.kind !== 'mul' || e.factors[0].kind !== 'num' || e.factors[0].value.isInteger()) return e
+  const { n, d } = e.factors[0].value
+  const top = n < 0n ? -n : n
+  const factors: Expr[] = [
+    ...(n < 0n ? [num(-1)] : []),
+    ...(top === 1n ? [] : [num(top)]),
+    ...e.factors.slice(1),
+    { kind: 'pow', base: num(d), exp: num(-1) },
+  ]
+  return { kind: 'mul', factors }
 }

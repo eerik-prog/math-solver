@@ -14,7 +14,7 @@ function StepItem({ step, depth, index }: { step: Step; depth: number; index: nu
         </div>
       )}
       {step.substeps && step.substeps.length > 0 && (
-        <details className="substeps" open={depth === 0 && step.substeps.length <= 4}>
+        <details className="substeps" open={depth === 0 && step.substeps.length <= 6}>
           <summary>{depth === 0 ? 'How?' : 'More detail'}</summary>
           <ol>
             {step.substeps.map((s, i) => (
@@ -28,12 +28,12 @@ function StepItem({ step, depth, index }: { step: Step; depth: number; index: nu
 }
 
 function AnswerRow({ answer, index }: { answer: Answer; index: number }) {
-  const [copied, setCopied] = useState(false)
-  const copy = async () => {
+  const [copied, setCopied] = useState<'text' | 'latex' | null>(null)
+  const copy = async (what: 'text' | 'latex') => {
     try {
-      await navigator.clipboard.writeText(answer.text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      await navigator.clipboard.writeText(what === 'text' ? answer.text : answer.tex)
+      setCopied(what)
+      setTimeout(() => setCopied(null), 1500)
     } catch {
       /* clipboard unavailable */
     }
@@ -44,21 +44,31 @@ function AnswerRow({ answer, index }: { answer: Answer; index: number }) {
         <Tex tex={answer.tex} display />
         {answer.approx && <span className="approx">≈ {answer.approx}</span>}
       </div>
-      <button
-        type="button"
-        className={`copy${copied ? ' done' : ''}`}
-        onClick={copy}
-        aria-label={`Copy ${answer.text}`}
-      >
-        {copied ? 'Copied ✓' : 'Copy'}
-      </button>
+      <div className="answer-actions">
+        <button
+          type="button"
+          className={`copy${copied === 'text' ? ' done' : ''}`}
+          onClick={() => void copy('text')}
+          aria-label={copied === 'text' ? 'Copied' : `Copy ${answer.text}`}
+        >
+          {copied === 'text' ? 'Copied ✓' : 'Copy'}
+        </button>
+        <button
+          type="button"
+          className={`copy latex${copied === 'latex' ? ' done' : ''}`}
+          onClick={() => void copy('latex')}
+          aria-label={copied === 'latex' ? 'Copied' : `Copy LaTeX of ${answer.text}`}
+          title="Copy as LaTeX"
+        >
+          {copied === 'latex' ? 'Copied ✓' : 'LaTeX'}
+        </button>
+      </div>
     </li>
   )
 }
 
 /** `quiet` turns off entrance animations, for updates made while the person is still typing. */
-export function SolutionView({ solution, ms, quiet = false }: { solution: Solution; ms: number; quiet?: boolean }) {
-  const [showSteps, setShowSteps] = useState(true)
+export function SolutionView({ solution, quiet = false }: { solution: Solution; quiet?: boolean }) {
   const real = solution.answers.filter((a) => !a.complex)
   const complex = solution.answers.filter((a) => a.complex)
   return (
@@ -93,29 +103,16 @@ export function SolutionView({ solution, ms, quiet = false }: { solution: Soluti
             ))}
           </ul>
         )}
-        <p className="timing">Solved in {ms < 1 ? '<1' : Math.round(ms)} ms</p>
       </header>
 
       {solution.steps.length > 0 && (
         <section className="card rise" style={rise(1)} aria-labelledby="steps-title">
-          <div className="section-head">
-            <h2 id="steps-title">Step-by-step</h2>
-            <button
-              type="button"
-              className="ghost small"
-              onClick={() => setShowSteps((v) => !v)}
-              aria-expanded={showSteps}
-            >
-              {showSteps ? 'Hide' : 'Show'}
-            </button>
-          </div>
-          {showSteps && (
-            <ol className="steps">
-              {solution.steps.map((s, i) => (
-                <StepItem key={i} step={s} depth={0} index={i} />
-              ))}
-            </ol>
-          )}
+          <h2 id="steps-title">Step-by-step</h2>
+          <ol className="steps">
+            {solution.steps.map((s, i) => (
+              <StepItem key={i} step={s} depth={0} index={i} />
+            ))}
+          </ol>
         </section>
       )}
 

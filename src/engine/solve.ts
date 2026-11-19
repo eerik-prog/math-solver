@@ -4,6 +4,7 @@ import {
   PI,
   ZERO,
   add,
+  children,
   contains,
   countOccurrences,
   div,
@@ -16,10 +17,12 @@ import {
   neg,
   num,
   pow,
+  size,
   sub,
   substitute,
   sym,
 } from './expr'
+import { literalTex } from './arithmetic'
 import { identify } from './identify'
 import { compile, evalNum, findRealRoots } from './numeric'
 import {
@@ -32,7 +35,7 @@ import {
   ratFromExpr,
   rationalRoots,
 } from './poly'
-import { formatNumber, texNumber, toTex, toText } from './print'
+import { formatNumber, texNumber, toPlain, toTex, toText } from './print'
 import { Rational } from './rational'
 import { simplify } from './simplify'
 import type { Answer, PlotSpec, Solution, Step } from './types'
@@ -94,24 +97,24 @@ export function solvePolynomial(p: Poly, x: string, steps: Step[]): PolyRoots {
   if (nonzero.length === 2 && nonzero[0] === 0 && rationalRoots(p).roots.length === 0) {
     const n = deg
     const rhs = p.coef(0).neg().div(p.lead)
-    steps.push({ title: `Isolate ${x}^${n}`, tex: `${x}^{${n}} = ${toTex(num(rhs))}` })
+    steps.push({ title: `Get ${x}${n === 3 ? '³' : `^${n}`} on its own`, tex: `${x}^{${n}} = ${toTex(num(rhs))}` })
     if (n % 2 === 1) {
       const r = simplify(pow(num(rhs), num(Rational.of(1, n))))
       steps.push({
-        title: `Take the ${ordinalRoot(n)} root of both sides (odd root, one real solution)`,
+        title: `Take the ${ordinalRoot(n)} root of both sides. An odd root gives just one real answer`,
         tex: `${x} = ${toTex(r)}`,
       })
       real.push(rootOf(r))
     } else if (rhs.sign() >= 0) {
       const r = simplify(pow(num(rhs), num(Rational.of(1, n))))
       steps.push({
-        title: `Take the ${ordinalRoot(n)} root of both sides; an even root gives ±`,
+        title: `Take the ${ordinalRoot(n)} root of both sides. Don't forget ±: a negative number to an even power is positive too`,
         tex: `${x} = \\pm ${toTex(r)}`,
       })
       if (isZero(r)) real.push(rootOf(r))
       else real.push(rootOf(simplify(neg(r))), rootOf(r))
     } else {
-      steps.push({ title: `An even power can't be negative, so there are no real solutions` })
+      steps.push({ title: `A number to an even power can't be negative, so there is no real answer` })
     }
     for (const z of complexRoots(p)) if (z.im !== 0) complex.push({ exact: null, z })
     return { real, complex }
@@ -122,7 +125,7 @@ export function solvePolynomial(p: Poly, x: string, steps: Step[]): PolyRoots {
     const q = new Poly([p.coef(0), p.coef(2), p.coef(4)])
     const u = x === 'u' ? 't' : 'u'
     steps.push({
-      title: `Only even powers appear, so substitute ${u} = ${x}²`,
+      title: `Only even powers of ${x} appear. Let ${u} = ${x}², so ${x}⁴ = ${u}² and the equation becomes a quadratic`,
       tex: `${toTex(q.toExpr(u))} = 0`,
     })
     const sub: Step[] = []
@@ -150,30 +153,44 @@ export function solvePolynomial(p: Poly, x: string, steps: Step[]): PolyRoots {
         if (z.im !== 0 && !complex.some((k) => Math.abs(k.z.re - z.re) < 1e-9 && Math.abs(k.z.im - z.im) < 1e-9))
           complex.push({ exact: null, z })
     }
-    steps.push({ title: `Undo the substitution: ${x} = ±√${u}`, tex: sols.join(',\\quad ') })
+    steps.push({ title: `Go back to ${x}: since ${u} = ${x}², ${x} = ±√${u}`, tex: sols.join(',\\quad ') })
     real.sort((a, b) => a.value - b.value)
     return { real, complex }
   }
 
   // General: factor out x^k, rational roots, then quadratic formula or numerics.
-  const { roots, rest, candidates } = rationalRoots(p)
+  const { roots, rest } = rationalRoots(p)
   if (roots.length > 0) {
+    const pe = p.toExpr(x)
+    const tries: Step[] = roots.slice(0, 4).map((r) => {
+      const v = num(r.value)
+      return {
+        title: `Try ${x} = ${say(r.value)}: the left side comes out as 0, so (${sayExpr(new Poly([r.value.neg(), Rational.ONE]).toExpr(x))}) is a factor`,
+        tex: `${toTex(substitute(pe, x, v))} = 0`,
+      }
+    })
+    const prim = p.primitive().prim
+    const low = prim.c.findIndex((c) => !c.isZero())
+    const c0 = prim.coef(low).abs()
+    const an = prim.lead.abs()
+    const hint = an.isOne()
+      ? `the numbers that divide the last number, ${c0} (with + or −)`
+      : `fractions whose top divides ${c0} and whose bottom divides ${an} (with + or −)`
     steps.push({
       title:
-        'Factor the polynomial (rational root theorem: try ±(factors of the constant term)/(factors of the leading coefficient))',
-      tex: `${factoredTex(p, x)} = 0`,
-      substeps: candidates
-        ? [
-            {
-              title: `Tried ${candidates} candidate${candidates === 1 ? '' : 's'}; found ${roots.map((r) => `${x} = ${r.value.toString()}`).join(', ')}`,
-            },
-          ]
-        : undefined,
+        low > 0
+          ? `Every term has ${x} in it, so ${x} = 0 is one answer. To find others, try ${hint}`
+          : `Look for simple answers first. Good guesses are ${hint}`,
+      substeps: tries,
     })
     steps.push({
-      title: 'Set each factor equal to zero',
+      title: 'Write the left side as factors (brackets multiplied together)',
+      tex: `${factoredTex(p, x)} = 0`,
+    })
+    steps.push({
+      title: 'The factors multiply to give 0, so one of them must be 0. Set each one equal to 0',
       tex: roots
-        .map((r) => `${x} = ${toTex(num(r.value))}${r.mult > 1 ? `\\;(\\text{multiplicity } ${r.mult})` : ''}`)
+        .map((r) => `${x} = ${toTex(num(r.value))}${r.mult > 1 ? `\\;(\\text{repeated ${r.mult} times})` : ''}`)
         .join(',\\quad '),
     })
     for (const r of roots) real.push(rootOf(num(r.value)))
@@ -181,7 +198,7 @@ export function solvePolynomial(p: Poly, x: string, steps: Step[]): PolyRoots {
   if (rest.degree === 2) {
     const sub: Step[] = []
     const q = solveQuadratic(rest, x, sub)
-    steps.push({ title: `Solve the remaining quadratic factor ${toText(rest.toExpr(x))} = 0`, substeps: sub })
+    steps.push({ title: `Solve the bracket that is left, ${sayExpr(rest.toExpr(x))} = 0`, substeps: sub })
     real.push(...q.real)
     complex.push(...q.complex)
   } else if (rest.degree === 1) {
@@ -210,84 +227,180 @@ function ordinalRoot(n: number): string {
   return n === 2 ? 'square' : n === 3 ? 'cube' : `${n}th`
 }
 
-function solveQuadratic(p: Poly, x: string, steps: Step[]): PolyRoots {
+/** A number in a formula: brackets around negatives and fractions. */
+const par = (r: Rational) => (r.sign() < 0 || !r.isInteger() ? `\\left(${toTex(num(r))}\\right)` : toTex(num(r)))
+/** A number in a sentence, with a real minus sign. */
+const say = (r: Rational) => r.toString().replace(/^-/, '−')
+const sayExpr = toPlain
+
+/** a·x² + c = k: get x² on its own, then take the square root (±). */
+function solvePureSquare(left: Poly, right: Poly, x: string, steps: Step[]): PolyRoots {
+  const a = left.coef(2)
+  const c = left.coef(0)
+  const k = right.coef(0)
+  const real: Root[] = []
+  const complex: PolyRoots['complex'] = []
+  const ax2 = toTex(simplify(mul(num(a), pow(sym(x), 2))))
+  const rhs = k.sub(c).div(a)
+  if (!c.isZero())
+    steps.push({
+      title: `${c.sign() > 0 ? `Subtract ${say(c)} from` : `Add ${say(c.neg())} to`} both sides${a.isOne() ? `, so ${x}² is on its own` : ''}`,
+      tex: `${ax2} = ${toTex(num(k.sub(c)))}`,
+    })
+  if (!a.isOne())
+    steps.push({
+      title: `Divide both sides by ${say(a)}, so ${x}² is on its own`,
+      tex: `${x}^{2} = ${toTex(num(rhs))}`,
+    })
+  const s = simplify(pow(num(rhs.abs()), num(Rational.HALF)))
+  if (rhs.isZero()) {
+    steps.push({ title: `Only 0 squared is 0`, tex: `${x} = 0` })
+    real.push(rootOf(ZERO))
+  } else if (rhs.sign() > 0) {
+    const why =
+      s.kind === 'num'
+        ? `both ${toText(s)}² and (−${toText(s)})² equal ${say(rhs)}`
+        : 'a negative number squared is positive too'
+    steps.push({
+      title: `Take the square root of both sides. Don't forget ±, because ${why}`,
+      tex: `${x} = \\pm ${toTex(s)}`,
+    })
+    real.push(rootOf(simplify(neg(s))), rootOf(s))
+  } else {
+    steps.push({
+      title: `A square is never negative, so there is no real answer. With complex numbers (where i = √−1):`,
+      tex: `${x} = \\pm ${toTex(simplify(mul(s, sym('i'))))}`,
+    })
+    const v = evalNum(s)
+    complex.push(
+      { exact: simplify(neg(mul(s, sym('i')))), z: { re: 0, im: -v } },
+      { exact: simplify(mul(s, sym('i'))), z: { re: 0, im: v } },
+    )
+  }
+  return { real, complex }
+}
+
+function solveQuadratic(p0: Poly, x: string, steps: Step[]): PolyRoots {
+  let p = p0
+  if (p.coef(2).sign() < 0 && !p.coef(1).isZero() && !p.coef(0).isZero()) {
+    p = p.neg()
+    steps.push({
+      title: `Multiply every term by −1, so the number in front of ${x}² is positive. That makes the next steps easier`,
+      tex: `${toTex(p.toExpr(x))} = 0`,
+    })
+  }
   const [c, b, a] = [p.coef(0), p.coef(1), p.coef(2)]
   const real: Root[] = []
   const complex: PolyRoots['complex'] = []
   if (c.isZero()) {
     const lin = new Poly([b, a])
-    steps.push({ title: `Factor out ${x}`, tex: `${x}\\left(${toTex(lin.toExpr(x))}\\right) = 0` })
+    const linTex = toTex(lin.toExpr(x))
     const r = b.neg().div(a)
     steps.push({
-      title: 'Set each factor equal to zero',
-      tex: `${x} = 0 \\quad\\text{or}\\quad ${toTex(lin.toExpr(x))} = 0 \\;\\Rightarrow\\; ${x} = ${toTex(num(r))}`,
+      title: `Every term has an ${x} in it, so take ${x} out as a common factor`,
+      tex: `${x}\\left(${linTex}\\right) = 0`,
     })
+    steps.push({
+      title: 'Two things multiply to give 0, so one of them must be 0',
+      tex: `${x} = 0 \\quad\\text{or}\\quad ${linTex} = 0`,
+    })
+    steps.push({ title: `Solve ${sayExpr(lin.toExpr(x))} = 0`, tex: `${x} = ${toTex(num(r))}` })
     real.push(rootOf(ZERO), rootOf(num(r)))
     real.sort((u, v) => u.value - v.value)
     return { real, complex }
   }
-  if (b.isZero()) {
-    const rhs = c.neg().div(a)
-    steps.push({ title: `Isolate ${x}²`, tex: `${x}^{2} = ${toTex(num(rhs))}` })
-    const s = simplify(pow(num(rhs.abs()), num(Rational.HALF)))
-    if (rhs.sign() > 0) {
-      steps.push({ title: 'Take the square root of both sides (remember ±)', tex: `${x} = \\pm ${toTex(s)}` })
-      real.push(rootOf(simplify(neg(s))), rootOf(s))
-    } else {
-      steps.push({
-        title: `A square can't be negative, so there are no real solutions. Over the complex numbers:`,
-        tex: `${x} = \\pm ${toTex(simplify(mul(s, sym('i'))))}`,
-      })
-      const v = evalNum(s)
-      complex.push(
-        { exact: simplify(neg(mul(s, sym('i')))), z: { re: 0, im: -v } },
-        { exact: simplify(mul(s, sym('i'))), z: { re: 0, im: v } },
-      )
-    }
-    return { real, complex }
-  }
+  if (b.isZero()) return solvePureSquare(p, Poly.constant(0), x, steps)
   const { disc, roots } = quadraticRoots(p)
   steps.push({
-    title: 'Identify the coefficients of ax² + bx + c = 0',
+    title: `Read off a, b and c: the number in front of ${x}², the number in front of ${x}, and the number on its own`,
     tex: `a = ${toTex(num(a))},\\quad b = ${toTex(num(b))},\\quad c = ${toTex(num(c))}`,
   })
-  const paren = (r: Rational) => (r.sign() < 0 || !r.isInteger() ? `\\left(${toTex(num(r))}\\right)` : toTex(num(r)))
-  steps.push({
-    title: 'Compute the discriminant Δ = b² − 4ac',
-    tex: `\\Delta = ${paren(b)}^{2} - 4 \\cdot ${paren(a)} \\cdot ${paren(c)} = ${toTex(num(disc))}`,
-  })
   const sqrtD = disc.sign() >= 0 ? simplify(pow(num(disc), num(Rational.HALF))) : null
-  const rationalRootsOnly = sqrtD !== null && sqrtD.kind === 'num'
-  if (rationalRootsOnly && !disc.isZero()) {
-    steps.push({
-      title: 'Δ is a perfect square, so the quadratic factors over the rational numbers',
-      tex: `${factoredTex(p, x)} = 0`,
-    })
-    steps.push({ title: 'Set each factor equal to zero', tex: roots.map((r) => `${x} = ${toTex(r)}`).join(',\\quad ') })
-    real.push(...roots.map(rootOf))
-    real.sort((u, v) => u.value - v.value)
-    return { real, complex }
+
+  // x² + bx + c with whole-number answers: find two numbers that multiply to c and add to b.
+  if (a.isOne() && b.isInteger() && c.isInteger() && sqrtD?.kind === 'num' && roots.every((r) => r.kind === 'num')) {
+    const found = roots.map((r) => (r.kind === 'num' ? r.value : Rational.ZERO))
+    const rs = found.length === 1 ? [found[0], found[0]] : found
+    if (rs.every((r) => r.isInteger())) {
+      const [m, k] = rs.map((r) => r.neg())
+      const bracket = (r: Rational) => toTex(new Poly([r.neg(), Rational.ONE]).toExpr(x))
+      steps.push({
+        title: `Find two numbers that multiply to make c = ${say(c)} and add up to b = ${say(b)}. They are ${say(m)} and ${say(k)}`,
+        tex: `${par(m)} \\times ${par(k)} = ${toTex(num(c))},\\quad ${par(m)} + ${par(k)} = ${toTex(num(b))}`,
+      })
+      steps.push({
+        title: 'Use the two numbers to write the left side as two brackets multiplied together',
+        tex: `\\left(${bracket(rs[0])}\\right)\\left(${bracket(rs[1])}\\right) = 0`,
+      })
+      if (disc.isZero()) {
+        steps.push({ title: 'Both brackets are the same, so it must be 0', tex: `${bracket(rs[0])} = 0` })
+        steps.push({ title: `Solve for ${x}`, tex: `${x} = ${toTex(num(rs[0]))}` })
+        real.push(rootOf(num(rs[0])))
+      } else {
+        steps.push({
+          title: 'Two brackets multiply to give 0, so one of them must be 0',
+          tex: `${bracket(rs[0])} = 0 \\quad\\text{or}\\quad ${bracket(rs[1])} = 0`,
+        })
+        steps.push({
+          title: 'Solve each one',
+          tex: `${x} = ${toTex(num(rs[0]))} \\quad\\text{or}\\quad ${x} = ${toTex(num(rs[1]))}`,
+        })
+        real.push(...rs.map((r) => rootOf(num(r))))
+      }
+      real.sort((u, v) => u.value - v.value)
+      return { real, complex }
+    }
   }
-  const formula = `${x} = \\frac{-${paren(b)} \\pm \\sqrt{${toTex(num(disc))}}}{2 \\cdot ${paren(a)}}`
+
+  // Quadratic formula, one small move at a time.
+  const bb = b.mul(b)
+  const fourAC = Rational.of(4).mul(a).mul(c)
+  steps.push({
+    title: 'Work out the discriminant Δ = b² − 4ac. Its sign tells you how many answers there are',
+    tex: `\\Delta = ${par(b)}^{2} - 4 \\cdot ${par(a)} \\cdot ${par(c)} = ${toTex(num(bb))} - ${par(fourAC)} = ${toTex(num(disc))}`,
+  })
+  const negB = b.neg()
+  const twoA = a.mul(Rational.of(2))
+  const formula = `${x} = \\frac{-${par(b)} \\pm \\sqrt{${toTex(num(disc))}}}{2 \\cdot ${par(a)}}`
   if (disc.isZero()) {
     steps.push({
-      title: 'Δ = 0, so there is exactly one (repeated) solution x = −b / (2a)',
-      tex: `${x} = ${toTex(roots[0])}`,
+      title: `Δ is 0, so there is only one answer: ${x} = −b ÷ 2a`,
+      tex: `${x} = \\frac{-${par(b)}}{2 \\cdot ${par(a)}} = ${toTex(roots[0])}`,
     })
     real.push(rootOf(roots[0]))
-  } else if (disc.sign() > 0) {
+    return { real, complex }
+  }
+  if (disc.sign() > 0) {
     steps.push({
-      title: 'Δ > 0, so there are two real solutions. Use the quadratic formula x = (−b ± √Δ) / (2a)',
+      title: `Δ is positive, so there are two answers. Put a, b and Δ into the quadratic formula ${x} = (−b ± √Δ) ÷ 2a`,
       tex: formula,
     })
-    steps.push({ title: 'Simplify', tex: roots.map((r) => `${x} = ${toTex(r)}`).join(',\\quad ') })
+    const rootTex = sqrtD ? toTex(sqrtD) : ''
+    const simpler = sqrtD && sqrtD.kind !== 'num' && rootTex !== `\\sqrt{${disc}}`
+    steps.push({
+      title: simpler
+        ? `Tidy up: −b = ${say(negB)}, 2a = ${say(twoA)}, and √${disc} simplifies to ${sayExpr(sqrtD!)}`
+        : `Tidy up: −b = ${say(negB)}, √Δ = ${sqrtD ? sayExpr(sqrtD) : ''} and 2a = ${say(twoA)}`,
+      tex: `${x} = \\frac{${toTex(num(negB))} \\pm ${rootTex}}{${toTex(num(twoA))}}`,
+    })
+    const half = (sign: '+' | '-') => {
+      const raw = `\\frac{${toTex(num(negB))} ${sign} ${rootTex}}{${toTex(num(twoA))}}`
+      const val = simplify(div(sign === '+' ? add(num(negB), sqrtD!) : sub(num(negB), sqrtD!), num(twoA)))
+      const valTex = toTex(val)
+      return raw === valTex ? `${x} = ${raw}` : `${x} = ${raw} = ${valTex}`
+    }
+    steps.push({
+      title: 'Split the ± into two answers: one with + and one with −',
+      tex: `${half('+')} \\quad\\text{or}\\quad ${half('-')}`,
+    })
     real.push(...roots.map(rootOf))
   } else {
     steps.push({
-      title: 'Δ < 0, so there are no real solutions. The quadratic formula gives two complex solutions',
+      title:
+        'Δ is negative. No real number squared is negative, so there are no real answers. The quadratic formula still gives two complex answers',
       tex: formula,
     })
-    steps.push({ title: 'Simplify using √(−1) = i', tex: roots.map((r) => `${x} = ${toTex(r)}`).join(',\\quad ') })
+    steps.push({ title: 'Simplify, using i = √−1', tex: roots.map((r) => `${x} = ${toTex(r)}`).join(',\\quad ') })
     for (const r of roots) {
       const re = evalNum(simplify(substitute(r, 'i', ZERO)))
       const im = evalNum(simplify(substitute(sub(r, substitute(r, 'i', ZERO)), 'i', ONE)))
@@ -333,6 +446,7 @@ function isolate(L: Expr, R: Expr, x: string, steps: Step[]): Branch[] | null {
   for (let guard = 0; guard < 40 && branches.length; guard++) {
     const next: Branch[] = []
     const lines: string[] = []
+    const pre: Step[] = []
     let title = ''
     for (const br of branches) {
       const { f, g } = br
@@ -343,7 +457,11 @@ function isolate(L: Expr, R: Expr, x: string, steps: Step[]): Branch[] | null {
       const push = (nf: Expr, ng: Expr, t: string, general = br.general) => {
         const sg = simplify(ng)
         next.push({ f: nf, g: sg, general })
-        lines.push(eqTex(nf, sg))
+        // Show the right side before tidying it when that helps: x = 4/2 = 2, x = 2³ = 8.
+        const raw = toTex(ng)
+        const shown = toTex(sg)
+        const showRaw = !general && raw !== shown && raw.length < 60 && !freeSymbols(ng).size
+        lines.push(showRaw ? `${toTex(nf)} = ${raw} = ${shown}` : eqTex(nf, sg))
         if (!title) title = t
       }
       switch (f.kind) {
@@ -351,19 +469,33 @@ function isolate(L: Expr, R: Expr, x: string, steps: Step[]): Branch[] | null {
           const withX = f.terms.find((t) => contains(t, x))!
           const others = simplify(add(...f.terms.filter((t) => t !== withX)))
           const neg_ = isNegativeTerm(others)
+          const on = isSym(withX, x) ? x : `the ${x} part`
           push(
             withX,
-            sub(g, others),
-            neg_ ? `Add ${toText(simplify(neg(others)))} to both sides` : `Subtract ${toText(others)} from both sides`,
+            add(g, simplify(neg(others))),
+            neg_
+              ? `Add ${sayExpr(simplify(neg(others)))} to both sides. This leaves ${on} on its own`
+              : `Subtract ${sayExpr(others)} from both sides. This leaves ${on} on its own`,
           )
           break
         }
         case 'mul': {
           const withX = f.factors.find((t) => contains(t, x))!
           const others = simplify(mul(...f.factors.filter((t) => t !== withX)))
+          const on = isSym(withX, x) ? x : `the ${x} part`
           if (others.kind === 'pow' && others.exp.kind === 'num' && others.exp.value.eq(Rational.MINUS_ONE))
-            push(withX, mul(g, others.base), `Multiply both sides by ${toText(others.base)}`)
-          else push(withX, div(g, others), `Divide both sides by ${toText(others)}`)
+            push(
+              withX,
+              mul(g, others.base),
+              `Multiply both sides by ${sayExpr(others.base)}. This leaves ${on} on its own`,
+            )
+          else if (others.kind === 'num' && !others.value.isInteger())
+            push(
+              withX,
+              mul(g, num(others.value.inv())),
+              `Multiply both sides by ${say(others.value.inv())}. This leaves ${on} on its own`,
+            )
+          else push(withX, div(g, others), `Divide both sides by ${sayExpr(others)}. This leaves ${on} on its own`)
           break
         }
         case 'pow': {
@@ -385,10 +517,11 @@ function isolate(L: Expr, R: Expr, x: string, steps: Step[]): Branch[] | null {
                   break
                 }
                 const root = simplify(pow(g, num(inv)))
+                const t = `Take the ${ordinalRoot(Number(v.n))} root of both sides. Don't forget ±: a negative number to an even power is positive too`
                 if (isZero(root)) push(base, root, `Take the ${ordinalRoot(Number(v.n))} root of both sides`)
                 else {
-                  push(base, root, `Take the ${ordinalRoot(Number(v.n))} root of both sides (±)`)
-                  push(base, neg(root), `Take the ${ordinalRoot(Number(v.n))} root of both sides (±)`)
+                  push(base, root, t)
+                  push(base, neg(root), t)
                 }
               } else {
                 if (v.d % 2n === 0n && !freeSymbols(g).size && evalNum(g) < 0) {
@@ -399,8 +532,10 @@ function isolate(L: Expr, R: Expr, x: string, steps: Step[]): Branch[] | null {
                   base,
                   pow(g, num(inv)),
                   v.d === 1n
-                    ? `Take the ${ordinalRoot(Number(v.n))} root of both sides`
-                    : `Raise both sides to the power ${inv.toString()}`,
+                    ? `Take the ${ordinalRoot(Number(v.n))} root of both sides. This undoes the power ${v.n}`
+                    : v.n === 1n && v.d === 2n
+                      ? 'Square both sides. This undoes the square root'
+                      : `Raise both sides to the power ${inv.toString()}. This undoes the power ${v.toString()}`,
                 )
               }
               break
@@ -416,8 +551,14 @@ function isolate(L: Expr, R: Expr, x: string, steps: Step[]): Branch[] | null {
             title = title || 'An exponential is always positive, so there is no solution'
             break
           }
-          if (isSym(base, 'e')) push(exp, fn('ln', g), 'Take the natural logarithm of both sides')
-          else push(exp, fn('log', g, base), `Take the logarithm base ${toText(base)} of both sides`)
+          if (isSym(base, 'e'))
+            push(exp, fn('ln', g), 'Take ln (the natural log) of both sides. It undoes e to a power: ln(eᵘ) = u')
+          else
+            push(
+              exp,
+              fn('log', g, base),
+              `Take log base ${sayExpr(base)} of both sides. It undoes ${sayExpr(base)} to a power, and answers "${sayExpr(base)} to what power gives ${sayExpr(g)}?"`,
+            )
           break
         }
         case 'fn': {
@@ -426,13 +567,17 @@ function isolate(L: Expr, R: Expr, x: string, steps: Step[]): Branch[] | null {
           const gv = freeSymbols(g).size ? NaN : evalNum(g)
           switch (f.name) {
             case 'ln':
-              push(a, pow(sym('e'), g), 'Exponentiate both sides (eˡⁿ ᵘ = u)')
+              push(a, pow(sym('e'), g), 'Raise e to the power of each side. This undoes ln, because e^ln(u) = u')
               break
             case 'log':
-              push(a, pow(f.args[1], g), `Raise ${toText(f.args[1])} to the power of both sides`)
+              push(
+                a,
+                pow(f.args[1], g),
+                `Raise ${sayExpr(f.args[1])} to the power of each side. This undoes log base ${sayExpr(f.args[1])}`,
+              )
               break
             case 'sqrt':
-              push(a, pow(g, 2), 'Square both sides')
+              push(a, pow(g, 2), 'Square both sides. This undoes the square root')
               break
             case 'abs':
               if (gv < 0) {
@@ -441,8 +586,9 @@ function isolate(L: Expr, R: Expr, x: string, steps: Step[]): Branch[] | null {
               }
               if (gv === 0) push(a, ZERO, 'The absolute value is zero only when the inside is zero')
               else {
-                push(a, g, 'Split the absolute value into two cases: u = c or u = −c')
-                push(a, neg(g), 'Split the absolute value into two cases: u = c or u = −c')
+                const t = `|u| = ${sayExpr(g)} means u is ${sayExpr(g)} or −${sayExpr(g)} (both are ${sayExpr(g)} away from 0). Split into two cases`
+                push(a, g, t)
+                push(a, neg(g), t)
               }
               break
             case 'sin':
@@ -451,25 +597,37 @@ function isolate(L: Expr, R: Expr, x: string, steps: Step[]): Branch[] | null {
                 title = title || `${f.name} only takes values between −1 and 1, so there is no solution`
                 break
               }
+              const arc = f.name === 'sin' ? 'arcsin' : 'arccos'
               const inv = simplify(fn(f.name === 'sin' ? 'asin' : 'acos', g))
               const period = mul(num(2), PI, N)
-              const t = `Apply the inverse function; ${f.name} repeats every 2π, so add 2π${N.name} (${N.name} any integer)`
-              if (f.name === 'sin') {
-                push(a, add(inv, period), t, true)
-                const other = simplify(sub(PI, inv))
-                if (key(other) !== key(inv)) push(a, add(other, period), t, true)
-              } else {
-                push(a, add(inv, period), t, true)
-                const other = simplify(neg(inv))
-                if (key(other) !== key(inv) && !isZero(inv)) push(a, add(other, period), t, true)
+              const t = `${f.name} repeats every 2π, so add 2π${N.name}, where ${N.name} can be any whole number`
+              const other = f.name === 'sin' ? simplify(sub(PI, inv)) : simplify(neg(inv))
+              const hasOther = key(other) !== key(inv) && (f.name === 'sin' || !isZero(inv))
+              if (branches.length === 1) {
+                pre.push({
+                  title: `Use ${arc} to undo ${f.name}. This gives one answer`,
+                  tex: `${toTex(a)} = \\${arc}\\left(${toTex(g)}\\right) = ${toTex(inv)}`,
+                })
+                if (hasOther) {
+                  const how = f.name === 'sin' ? `\\pi - ${toTex(inv)}` : `-${toTex(inv)}`
+                  pre.push({
+                    title:
+                      f.name === 'sin'
+                        ? 'sin has the same value at π minus that angle, which gives a second answer'
+                        : 'cos has the same value at minus that angle, which gives a second answer',
+                    tex: `${toTex(a)} = ${how === toTex(other) ? how : `${how} = ${toTex(other)}`}`,
+                  })
+                }
               }
+              push(a, add(inv, period), t, true)
+              if (hasOther) push(a, add(other, period), t, true)
               break
             }
             case 'tan':
               push(
                 a,
                 add(fn('atan', g), mul(PI, N)),
-                `Apply arctan; tan repeats every π, so add π${N.name} (${N.name} any integer)`,
+                `Use arctan to undo tan. tan repeats every π, so add π${N.name}, where ${N.name} can be any whole number`,
                 true,
               )
               break
@@ -491,6 +649,7 @@ function isolate(L: Expr, R: Expr, x: string, steps: Step[]): Branch[] | null {
           return null
       }
     }
+    steps.push(...pre)
     if (lines.length) steps.push({ title, tex: lines.join(' \\quad\\text{or}\\quad ') })
     else if (title) steps.push({ title })
     branches = next
@@ -574,9 +733,18 @@ export function solveEq(L0: Expr, R0: Expr, x: string, steps: Step[]): EquationR
   const pr = polyFromExpr(R, x)
   if (pl && pr) {
     const p = pl.sub(pr)
-    if (p.degree <= 1) return result(linearSteps(L, R, pl, pr, x, steps))
+    if (p.degree <= 1) return result(linearSteps(L0, R0, pl, pr, x, steps))
+    // x² = 9 or 2x² + 1 = 9: no need to move everything across first.
+    if (p.degree === 2 && pl.degree === 2 && pl.coef(1).isZero() && pr.isConstant() && !p.coef(0).isZero()) {
+      const r = solvePureSquare(pl, pr, x, steps)
+      return result(r.real, r.complex)
+    }
     const expanded = p.toExpr(x)
-    steps.push({ title: 'Move every term to the left side and simplify', tex: `${toTex(expanded)} = 0` })
+    if (!isZero(R) || key(expanded) !== key(L))
+      steps.push({
+        title: 'Move everything to the left side, so the right side is 0. Then multiply out and tidy up',
+        tex: `${toTex(expanded)} = 0`,
+      })
     const r = solvePolynomial(p, x, steps)
     return result(r.real, r.complex)
   }
@@ -590,19 +758,22 @@ export function solveEq(L0: Expr, R0: Expr, x: string, steps: Step[]): EquationR
     for (const d of [...dens, rf.den])
       for (const r of rationalRoots(d).roots) if (!excludedVals.some((v) => v.eq(r.value))) excludedVals.push(r.value)
     steps.push({
-      title: 'Move everything to one side and combine into a single fraction',
+      title: 'Move everything to one side and combine it into one fraction',
       tex: `\\frac{${toTex(N.toExpr(x))}}{${toTex(rf.den.toExpr(x))}} = 0`,
     })
     if (excludedVals.length)
       steps.push({
-        title: 'Note where the original equation is undefined (a denominator would be zero)',
+        title: `Note the values ${x} can't be: they would make a bottom (denominator) equal to 0, and we can't divide by 0`,
         tex: excludedVals.map((v) => `${x} \\neq ${toTex(num(v))}`).join(',\\quad '),
       })
     if (N.isConstant()) {
-      steps.push({ title: 'The numerator is a nonzero constant, so the fraction is never zero' })
+      steps.push({ title: 'The top of the fraction is a number that is not 0, so the fraction can never be 0' })
       return result([], [], { excluded: excludedVals.map((v) => num(v)) })
     }
-    steps.push({ title: 'A fraction is zero exactly when its numerator is zero', tex: `${toTex(N.toExpr(x))} = 0` })
+    steps.push({
+      title: 'A fraction is 0 only when its top (numerator) is 0. So set the top equal to 0',
+      tex: `${toTex(N.toExpr(x))} = 0`,
+    })
     const r =
       N.degree <= 1
         ? { real: [rootOf(num(N.coef(0).neg().div(N.coef(1))))], complex: [] }
@@ -611,7 +782,7 @@ export function solveEq(L0: Expr, R0: Expr, x: string, steps: Step[]): EquationR
     const rejected = r.real.filter((root) => !kept.includes(root))
     if (rejected.length)
       steps.push({
-        title: 'Discard solutions that make a denominator zero',
+        title: "Throw away answers that would make a bottom 0, because the original equation doesn't work there",
         tex: rejected
           .map((q) => `${x} = ${q.exact ? toTex(q.exact) : texNumber(q.value)} \\text{ is excluded}`)
           .join(',\\quad '),
@@ -651,7 +822,8 @@ export function solveEq(L0: Expr, R0: Expr, x: string, steps: Step[]): EquationR
   let roots = findRealRoots(f, -100, 100)
   if (roots.length === 0) roots = findRealRoots(f, -10000, 10000, 40000)
   steps.push({
-    title: 'No exact algebraic method applies, so look for the roots of the left side minus the right side numerically',
+    title:
+      'There is no exact method for this one. Instead, look for where the left side minus the right side equals 0, by trying values closer and closer',
     tex: `f(${x}) = ${toTex(diff)} = 0`,
   })
   const limited = roots.length > 12 ? roots.filter((r) => Math.abs(r) <= 10) : roots
@@ -686,8 +858,8 @@ function verify(roots: Root[], L: Expr, R: Expr, x: string, steps: Step[], annou
   if (announce || bad.length) {
     steps.push({
       title: bad.length
-        ? 'Check each candidate in the original equation; discard the ones that fail (extraneous solutions)'
-        : 'Check each candidate in the original equation',
+        ? 'Check each possible answer in the original equation. Throw away the ones that do not work'
+        : 'Check each possible answer in the original equation',
       tex: [
         ...ok.map((r) => `${x} = ${r.exact ? toTex(r.exact) : texNumber(r.value)} \\;\\checkmark`),
         ...bad.map((r) => `${x} = ${r.exact ? toTex(r.exact) : texNumber(r.value)} \\;\\times`),
@@ -697,42 +869,161 @@ function verify(roots: Root[], L: Expr, R: Expr, x: string, steps: Step[], annou
   return ok.sort((a, b) => a.value - b.value)
 }
 
-function linearSteps(L: Expr, R: Expr, pl: Poly, pr: Poly, x: string, steps: Step[]): Root[] {
+/** Two lines of working, lined up on the = sign. */
+const aligned = (rows: Array<[string, string]>) =>
+  `\\begin{aligned} ${rows.map(([l, r]) => `${l} &= ${r}`).join(' \\\\ ')} \\end{aligned}`
+
+/** Does the expression have brackets to multiply out, like 3(x − 2)? */
+function hasBrackets(e: Expr): boolean {
+  if (e.kind === 'mul' && e.factors.some((f) => f.kind === 'add')) return true
+  if (e.kind === 'pow' && e.base.kind === 'add') return true
+  return children(e).some(hasBrackets)
+}
+
+/** The terms after multiplying out brackets, before like terms are combined. */
+function distributed(e: Expr): Expr[] {
+  if (e.kind === 'add') return e.terms.flatMap(distributed)
+  if (e.kind === 'mul') {
+    const sums = e.factors.filter((f) => f.kind === 'add')
+    if (sums.length === 1 && sums[0].kind === 'add') {
+      const others = e.factors.filter((f) => f !== sums[0])
+      return sums[0].terms.flatMap((t) => distributed(mul(...others, t)))
+    }
+  }
+  const t = simplify(e)
+  return t.kind === 'add' ? [...t.terms] : [t]
+}
+
+const sumOf = (terms: Expr[]): Expr => (terms.length === 1 ? terms[0] : { kind: 'add', terms })
+
+function linearSteps(L0: Expr, R0: Expr, pl: Poly, pr: Poly, x: string, steps: Step[]): Root[] {
   const X = sym(x)
   let [a1, b1, a2, b2] = [pl.coef(1), pl.coef(0), pr.coef(1), pr.coef(0)]
   const lin = (a: Rational, b: Rational) => simplify(add(mul(num(a), X), num(b)))
-  if (key(lin(a1, b1)) !== key(L) || key(lin(a2, b2)) !== key(R)) {
+  const L = simplify(L0)
+  const R = simplify(R0)
+  const brackets = hasBrackets(L0) || hasBrackets(R0)
+  const Ld = distributed(L0)
+  const Rd = distributed(R0)
+  if (brackets)
+    steps.push({
+      title: 'Multiply out the brackets: multiply each term inside by what is outside',
+      tex: eqTex(sumOf(Ld), sumOf(Rd)),
+    })
+  const crowded = (ts: Expr[]) =>
+    ts.filter((t) => contains(t, x)).length > 1 || ts.filter((t) => !contains(t, x)).length > 1
+  if (crowded(Ld) || crowded(Rd))
+    steps.push({
+      title: `Combine like terms: add up the ${x} terms, and add up the plain numbers`,
+      tex: eqTex(lin(a1, b1), lin(a2, b2)),
+    })
+  else if (!brackets && (key(lin(a1, b1)) !== key(L) || key(lin(a2, b2)) !== key(R)))
     steps.push({ title: 'Simplify both sides', tex: eqTex(lin(a1, b1), lin(a2, b2)) })
-  }
   if (a1.isZero()) {
     ;[a1, b1, a2, b2] = [a2, b2, a1, b1]
-    steps.push({ title: `Swap the sides so ${x} is on the left`, tex: eqTex(lin(a1, b1), lin(a2, b2)) })
+    steps.push({ title: `Swap the two sides so ${x} is on the left`, tex: eqTex(lin(a1, b1), lin(a2, b2)) })
   }
   if (!a2.isZero()) {
-    const t = simplify(mul(num(a2.abs()), X))
+    const t = toTex(simplify(mul(num(a2.abs()), X)))
+    const op = a2.sign() > 0 ? '-' : '+'
+    const before = [toTex(lin(a1, b1)), toTex(lin(a2, b2))]
     a1 = a1.sub(a2)
     steps.push({
-      title: a2.sign() > 0 ? `Subtract ${toText(t)} from both sides` : `Add ${toText(t)} to both sides`,
-      tex: eqTex(lin(a1, b1), num(b2)),
+      title: `${a2.sign() > 0 ? `Subtract ${sayExpr(simplify(mul(num(a2), X)))} from` : `Add ${sayExpr(simplify(mul(num(a2.neg()), X)))} to`} both sides. This gets all the ${x} terms on the left`,
+      tex: aligned([
+        [`${before[0]} ${op} ${t}`, `${before[1]} ${op} ${t}`],
+        [toTex(lin(a1, b1)), toTex(num(b2))],
+      ]),
     })
     a2 = Rational.ZERO
   }
   if (!b1.isZero()) {
+    const c = toTex(num(b1.abs()))
+    const op = b1.sign() > 0 ? '-' : '+'
     steps.push({
-      title: b1.sign() > 0 ? `Subtract ${b1.toString()} from both sides` : `Add ${b1.neg().toString()} to both sides`,
-      tex: eqTex(lin(a1, Rational.ZERO), num(b2.sub(b1))),
+      title: `${b1.sign() > 0 ? `Subtract ${say(b1)} from` : `Add ${say(b1.neg())} to`} both sides. This leaves the ${x} term on its own`,
+      tex: aligned([
+        [`${toTex(lin(a1, b1))} ${op} ${c}`, `${toTex(num(b2))} ${op} ${c}`],
+        [toTex(lin(a1, Rational.ZERO)), toTex(num(b2.sub(b1)))],
+      ]),
     })
     b2 = b2.sub(b1)
     b1 = Rational.ZERO
   }
+  const r = b2.div(a1)
   if (!a1.isOne()) {
-    steps.push({
-      title: a1.eq(Rational.MINUS_ONE) ? 'Multiply both sides by −1' : `Divide both sides by ${a1.toString()}`,
-      tex: `${x} = ${a1.d === 1n && b2.d === 1n && !a1.eq(Rational.MINUS_ONE) ? `\\frac{${toTex(num(b2))}}{${toTex(num(a1))}} = ` : ''}${toTex(num(b2.div(a1)))}`,
+    const ax = toTex(lin(a1, Rational.ZERO))
+    if (a1.eq(Rational.MINUS_ONE)) {
+      steps.push({
+        title: `Multiply both sides by −1. This changes −${x} into ${x}`,
+        tex: aligned([
+          [`-1 \\cdot \\left(${ax}\\right)`, `-1 \\cdot ${par(b2)}`],
+          [x, toTex(num(r))],
+        ]),
+      })
+    } else if (a1.isInteger()) {
+      steps.push({
+        title: `Divide both sides by ${say(a1)}. This leaves ${x} on its own`,
+        tex: aligned([
+          [
+            `\\frac{${ax}}{${toTex(num(a1))}}`,
+            b2.isInteger() ? `\\frac{${toTex(num(b2))}}{${toTex(num(a1))}}` : `${par(b2)} \\div ${par(a1)}`,
+          ],
+          [x, toTex(num(r))],
+        ]),
+      })
+    } else {
+      const inv = a1.inv()
+      steps.push({
+        title: inv.isInteger()
+          ? `Multiply both sides by ${say(inv)}. This undoes the division and leaves ${x} on its own`
+          : `Multiply both sides by ${say(inv)} (${say(a1)} turned upside down). This leaves ${x} on its own`,
+        tex: aligned([
+          [`${par(inv)} \\cdot ${ax}`, `${par(inv)} \\cdot ${par(b2)}`],
+          [x, toTex(num(r))],
+        ]),
+      })
+    }
+  }
+  return [rootOf(num(r))]
+}
+
+/** Puts each exact answer back into the original equation to show it works. */
+function checkStep(L: Expr, R: Expr, x: string, roots: Root[]): Step | null {
+  if (!roots.length || roots.length > 4 || size(L) + size(R) > 60) return null
+  if (roots.some((r) => r.general || r.symbolic || !r.exact || r.exact.kind !== 'num')) return null
+  const rightHasX = contains(R, x)
+  const rows: Step[] = []
+  for (const r of roots) {
+    const v = r.exact!
+    let lv: Expr
+    let rv: Expr
+    try {
+      lv = simplify(substitute(L, x, v))
+      rv = simplify(substitute(R, x, v))
+    } catch {
+      return null
+    }
+    if (lv.kind !== 'num' || rv.kind !== 'num' || !lv.value.eq(rv.value)) return null
+    const work = (side: Expr, val: Expr) => {
+      const put = substitute(side, x, v)
+      const w = literalTex(put) ?? toTex(put)
+      return w === toTex(val) ? w : `${w} = ${toTex(val)}`
+    }
+    const shown = sayExpr(lv)
+    rows.push({
+      title: rightHasX
+        ? `${x} = ${sayExpr(v)}: both sides come out as ${shown} ✓`
+        : `${x} = ${sayExpr(v)}: the left side comes out as ${shown}, the same as the right side ✓`,
+      tex: rightHasX ? `${work(L, lv)} \\quad\\text{and}\\quad ${work(R, rv)}` : work(L, lv),
     })
   }
-  const r = b2.div(a1)
-  return [rootOf(num(r))]
+  if (rows.length === 1)
+    return {
+      title: `Check: put ${x} = ${sayExpr(roots[0].exact!)} back into the original equation. ${rows[0].title.replace(/^[^:]*: /, '').replace(/^./, (ch) => ch.toUpperCase())}`,
+      tex: rows[0].tex,
+    }
+  return { title: 'Check: put each answer back into the original equation', substeps: rows }
 }
 
 function solveRadical(diff: Expr, x: string, steps: Step[]): Root[] | null {
@@ -760,14 +1051,15 @@ function solveRadical(diff: Expr, x: string, steps: Step[]): Root[] | null {
   if (contains(c, x) || c.kind !== 'num') return null
   // c·√A = −rest  →  c²·A = rest²
   const rhs = simplify(neg(restE))
-  steps.push({ title: 'Isolate the square root on one side', tex: eqTex(T, rhs) })
+  steps.push({ title: 'Get the square root on its own on one side', tex: eqTex(T, rhs) })
   const squared = A.scale(c.value.mul(c.value)).sub(rest.mul(rest))
   steps.push({
-    title: 'Square both sides (this can introduce extra solutions, so check them at the end)',
+    title:
+      'Square both sides to get rid of the square root. Squaring can create answers that do not really work, so we check them at the end',
     tex: `${toTex(simplify(mul(pow(c, 2), rad.base)))} = ${toTex(simplify(pow(rhs, 2)))}`,
   })
   if (squared.degree < 1) return []
-  steps.push({ title: 'Expand and move everything to one side', tex: `${toTex(squared.toExpr(x))} = 0` })
+  steps.push({ title: 'Multiply out and move everything to one side', tex: `${toTex(squared.toExpr(x))} = 0` })
   const r =
     squared.degree === 1
       ? { real: [rootOf(num(squared.coef(0).neg().div(squared.coef(1))))] }
@@ -841,7 +1133,10 @@ function solveBySubstitution(diff: Expr, x: string, steps: Step[]): Root[] | nul
     if (!p || p.degree < 2) continue
     const sub: Step[] = []
     const r = solvePolynomial(p, u, sub)
-    steps.push({ title: `Substitute ${u} = ${toText(g)}`, tex: `${toTex(p.toExpr(u))} = 0` })
+    steps.push({
+      title: `Let ${u} = ${sayExpr(g)}. Written with ${u}, the equation becomes a simpler polynomial`,
+      tex: `${toTex(p.toExpr(u))} = 0`,
+    })
     steps.push({
       title: `Solve for ${u}`,
       substeps: sub,
@@ -852,7 +1147,10 @@ function solveBySubstitution(diff: Expr, x: string, steps: Step[]): Root[] | nul
       const back: Step[] = []
       const target = q.exact ?? num(Rational.approximate(q.value, 1e9, 1e-15) ?? Rational.ZERO)
       const res = solveEq(g, target, x, back)
-      steps.push({ title: `Solve ${toText(g)} = ${q.exact ? toText(q.exact) : formatNumber(q.value)}`, substeps: back })
+      steps.push({
+        title: `Now go back to ${x}: solve ${sayExpr(g)} = ${q.exact ? sayExpr(q.exact) : formatNumber(q.value)}`,
+        substeps: back,
+      })
       roots.push(...res.real)
     }
     return dedupeRoots(roots)
@@ -900,6 +1198,10 @@ export function complexAnswer(x: string, c: PolyRoots['complex'][number]): Answe
 export function solveEquationProblem(L: Expr, R: Expr, x: string): Solution {
   const steps: Step[] = []
   const res = solveEq(L, R, x, steps)
+  if (!res.identity && !res.numeric && !steps.some((st) => st.title.startsWith('Check'))) {
+    const check = checkStep(L, R, x, res.real)
+    if (check) steps.push(check)
+  }
   const answers: Answer[] = []
   const notes = [...res.notes]
   if (res.identity) {
