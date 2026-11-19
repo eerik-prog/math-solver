@@ -1,12 +1,17 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { prefersReducedMotion, rise } from '../motion'
+import { Tex } from './Tex'
 
 interface Props {
   value: string
   onChange: (v: string) => void
   onSubmit: () => void
+  /** Empties the box (the × button and the Esc key). */
+  onClear: () => void
   busy: boolean
+  /** LaTeX for how the problem was read, shown quietly under the box; null while it can't be read. */
+  readAs: string | null
 }
 
 export interface MathInputHandle {
@@ -88,13 +93,41 @@ function useTypewriter(active: boolean): string {
 }
 
 export const MathInput = forwardRef<MathInputHandle, Props>(function MathInput(
-  { value, onChange, onSubmit, busy },
+  { value, onChange, onSubmit, onClear, busy, readAs },
   ref,
 ) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const keypadRef = useRef<HTMLDivElement>(null)
   useImperativeHandle(ref, () => ({ focus: () => inputRef.current?.focus() }))
   const placeholder = useTypewriter(!value)
   const [more, setMore] = useState(false)
+  const keys = more ? [...BASIC_KEYS, ...MORE_KEYS] : BASIC_KEYS
+  // The keypad is one stop in the Tab order; the arrow keys move between its keys.
+  const [activeKey, setActiveKey] = useState(0)
+  const active = Math.min(activeKey, keys.length)
+
+  // The box sticks to the top of the screen: keep what Tab moves to from scrolling in underneath it.
+  const formRef = useRef<HTMLFormElement>(null)
+  useEffect(() => {
+    const form = formRef.current
+    if (!form || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() =>
+      document.documentElement.style.setProperty('--sticky-space', `${Math.ceil(form.offsetHeight) + 28}px`),
+    )
+    ro.observe(form)
+    return () => ro.disconnect()
+  }, [])
+
+  const moveInKeypad = (e: React.KeyboardEvent) => {
+    const count = keys.length + 1
+    const step: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }
+    const next =
+      e.key in step ? (active + step[e.key] + count) % count : e.key === 'Home' ? 0 : e.key === 'End' ? count - 1 : -1
+    if (next < 0) return
+    e.preventDefault()
+    setActiveKey(next)
+    keypadRef.current?.querySelectorAll('button')[next]?.focus()
+  }
 
   const insert = (snippet: string) => {
     const el = inputRef.current
@@ -114,11 +147,19 @@ export const MathInput = forwardRef<MathInputHandle, Props>(function MathInput(
 
   return (
     <form
+      ref={formRef}
       className="input-card card rise"
       style={rise(2)}
       onSubmit={(e) => {
         e.preventDefault()
         onSubmit()
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && value) {
+          e.preventDefault()
+          onClear()
+          inputRef.current?.focus()
+        }
       }}
     >
       <label htmlFor="problem" className="sr-only">
@@ -138,10 +179,19 @@ export const MathInput = forwardRef<MathInputHandle, Props>(function MathInput(
           autoCorrect="off"
           spellCheck={false}
           enterKeyHint="go"
+          aria-keyshortcuts="/"
           autoFocus
         />
         {value && (
-          <button type="button" className="ghost clear" onClick={() => onChange('')} aria-label="Clear input">
+          <button
+            type="button"
+            className="ghost clear"
+            onClick={() => {
+              onClear()
+              inputRef.current?.focus()
+            }}
+            aria-label="Clear input"
+          >
             ×
           </button>
         )}
@@ -154,14 +204,42 @@ export const MathInput = forwardRef<MathInputHandle, Props>(function MathInput(
           )}
         </button>
       </div>
+      {/* The line keeps its space while there is input, so the keypad doesn't jump as you type. */}
+      {value.trim() && (
+        <p className="read-as">
+          {readAs && (
+            <>
+              <span className="read-as-label">We read this as:</span> <Tex tex={readAs} />
+            </>
+          )}
+        </p>
+      )}
       {busy && <div className="progress" aria-hidden="true" />}
-      <div className="keypad" role="group" aria-label="Insert symbols">
-        {(more ? [...BASIC_KEYS, ...MORE_KEYS] : BASIC_KEYS).map((k) => (
-          <button key={k.label} type="button" title={k.title} onClick={() => insert(k.insert)}>
+      <div className="keypad" role="toolbar" aria-label="Insert symbols" ref={keypadRef} onKeyDown={moveInKeypad}>
+        {keys.map((k, i) => (
+          <button
+            key={k.label}
+            type="button"
+            title={k.title}
+            tabIndex={i === active ? 0 : -1}
+            onFocus={() => setActiveKey(i)}
+            onClick={() => insert(k.insert)}
+          >
             {k.label}
           </button>
         ))}
-        <button type="button" className="more-key" aria-expanded={more} onClick={() => setMore((m) => !m)}>
+        <button
+          type="button"
+          className="more-key"
+          aria-expanded={more}
+          tabIndex={active === keys.length ? 0 : -1}
+          onFocus={() => setActiveKey(keys.length)}
+          onClick={() => {
+            // The button stays focused and moves to the end of the new set of keys.
+            setActiveKey(more ? BASIC_KEYS.length : BASIC_KEYS.length + MORE_KEYS.length)
+            setMore((m) => !m)
+          }}
+        >
           {more ? 'Less' : 'More'}
         </button>
       </div>

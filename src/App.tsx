@@ -1,12 +1,21 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Examples } from './components/Examples'
 import { MathInput, type MathInputHandle } from './components/MathInput'
-import { SolutionView } from './components/SolutionView'
-import type { SolveResponse } from './engine/types'
+import type { Solution, SolveResponse } from './engine/types'
+import { loadKatex } from './katex'
 import { prefersReducedMotion, rise } from './motion'
 import { SolverClient } from './solverClient'
 import { addToHistory, loadHistory, saveHistory } from './storage'
+
+// The solution view (with the graph) is only needed once there is an answer, so it loads separately.
+const loadSolutionView = () => import('./components/SolutionView')
+const SolutionView = lazy(() => loadSolutionView().then((m) => ({ default: m.SolutionView })))
+
+const SOURCE_URL = 'https://github.com/eerik-prog/math-solver'
+
+/** Why a problem is being solved: typed (as you type), submitted (Enter, Solve, an example) or opened from a link. */
+type How = 'typing' | 'submit' | 'open'
 
 const DEBOUNCE_MS = 450
 /** Errors from solve-as-you-type wait this much longer, so half-typed input isn't flagged. */
@@ -19,6 +28,28 @@ const THEME_COLOR = { light: '#fafafa', dark: '#000000' }
 type Theme = 'light' | 'dark' | 'system'
 
 const THEME_LABEL: Record<Theme, string> = { system: 'Auto', dark: 'Dark', light: 'Light' }
+
+/** What a screen reader says when an answer appears. */
+function answerSummary(solution: Solution): string {
+  const texts = solution.answers.map((a) => a.text)
+  return `${texts.length > 1 ? 'Answers' : 'Answer'}: ${texts.join('; ')}`
+}
+
+function whenIdle(cb: () => void): () => void {
+  if ('requestIdleCallback' in window) {
+    const handle = window.requestIdleCallback(cb, { timeout: 3000 })
+    return () => window.cancelIdleCallback(handle)
+  }
+  const timer = setTimeout(cb, 300)
+  return () => clearTimeout(timer)
+}
+
+function setQueryInUrl(q: string | null) {
+  const url = new URL(window.location.href)
+  if (q === null) url.searchParams.delete('q')
+  else url.searchParams.set('q', q)
+  if (url.href !== window.location.href) window.history.replaceState(null, '', url)
+}
 
 function initialQuery(): string {
   try {
@@ -77,63 +108,134 @@ export default function App() {
   const client = useMemo(() => new SolverClient(), [])
   const [input, setInput] = useState(initialQuery)
   const [response, setResponse] = useState<SolveResponse | null>(null)
-  // `reveal` changes when a solution should animate in (submit, example, first load), not on every keystroke.
+  // `reveal` changes when a solution should animate in (submit, example, opened link), not while typing.
   const [reveal, setReveal] = useState({ id: 0, animate: true })
-  const [errorVisible, setErrorVisible] = useState(false)
+  // Errors found while typing show up late and quietly; errors on submit are announced (role="alert").
+  const [error, setError] = useState<{ id: number; alert: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [readAs, setReadAs] = useState<string | null>(null)
+  const [announcement, setAnnouncement] = useState('')
   const [history, setHistory] = useState<string[]>(loadHistory)
   const [theme, setTheme] = useTheme()
   const requestId = useRef(0)
+  /** The text of the latest solve request, so the same problem isn't solved twice in a row. */
+  const requested = useRef('')
+  const opened = useRef(false)
   const inputRef = useRef<MathInputHandle>(null)
   const themeButton = useRef<HTMLButtonElement>(null)
-  const shownFirst = useRef(false)
 
   const run = useCallback(
-    async (q: string, record: boolean) => {
+    async (q: string, how: How) => {
       const text = q.trim()
-      if (!text) {
-        setResponse(null)
-        return
-      }
+      if (!text) return
+      requested.current = text
       const id = ++requestId.current
       const busyTimer = setTimeout(() => setBusy(true), BUSY_DELAY_MS)
       const res = await client.solve(text)
+      // Wait for the maths renderer and the view, so raw LaTeX never flashes up and nothing jumps.
+      if (res.ok) await Promise.all([loadKatex(), loadSolutionView()]).catch(() => undefined)
       clearTimeout(busyTimer)
       if (id !== requestId.current) return
       setBusy(false)
       setResponse(res)
-      if (res.ok && (record || !shownFirst.current)) setReveal({ id, animate: true })
-      else if (res.ok) setReveal((r) => (r.animate ? { id: r.id, animate: false } : r))
-      if (res.ok) shownFirst.current = true
-      if (!res.ok) {
-        setErrorVisible(record)
-        if (!record) setTimeout(() => id === requestId.current && setErrorVisible(true), TYPING_ERROR_DELAY_MS)
-      }
-      if (record && res.ok) {
+      if (res.ok) {
+        setError(null)
+        if (how === 'typing') setReveal((r) => (r.animate ? { id: r.id, animate: false } : r))
+        else {
+          setReveal({ id, animate: true })
+          const summary = answerSummary(res.solution)
+          // The same text twice in a row wouldn't be read again, so make it differ.
+          setAnnouncement((prev) => (prev === summary ? `${summary}\u00a0` : summary))
+        }
+      } else if (how === 'typing') {
+        setError(null)
+        setTimeout(() => id === requestId.current && setError({ id, alert: false }), TYPING_ERROR_DELAY_MS)
+      } else setError({ id, alert: true })
+      if (how === 'submit' && res.ok) {
         setHistory((h) => {
           const next = addToHistory(h, text)
           saveHistory(next)
           return next
         })
       }
-      if (record) {
-        const url = new URL(window.location.href)
-        url.searchParams.set('q', text)
-        window.history.replaceState(null, '', url)
-      }
+      if (how === 'submit') setQueryInUrl(text)
     },
     [client],
   )
 
-  // Solve as you type (debounced).
+  // Solve as you type (debounced). A problem opened from a link is solved straight away.
   useEffect(() => {
-    const t = setTimeout(() => void run(input, false), DEBOUNCE_MS)
+    const text = input.trim()
+    if (!text || text === requested.current) return
+    const t = setTimeout(
+      () => {
+        // Enter may have been pressed in the meantime.
+        if (text === requested.current) return
+        const how: How = opened.current ? 'typing' : 'open'
+        opened.current = true
+        void run(text, how)
+      },
+      opened.current ? DEBOUNCE_MS : 0,
+    )
     return () => clearTimeout(t)
   }, [input, run])
 
+  // "We read this as": how the problem was understood, updated on every keystroke.
+  useEffect(() => {
+    const text = input.trim()
+    if (!text) return
+    let alive = true
+    void client.readAs(text).then((tex) => alive && setReadAs(tex))
+    return () => {
+      alive = false
+    }
+  }, [input, client])
+
+  // Get the solver, the maths renderer and the solution view ready while the browser is idle.
+  useEffect(
+    () =>
+      whenIdle(() => {
+        client.warm()
+        void loadKatex()
+        void loadSolutionView()
+      }),
+    [client],
+  )
+
+  // "/" jumps to the problem box from anywhere on the page.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return
+      e.preventDefault()
+      inputRef.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+
+  const edit = (v: string) => {
+    setInput(v)
+    setError(null)
+    if (!v.trim()) {
+      // An empty box shows nothing, and any solve still running is ignored.
+      requested.current = ''
+      requestId.current++
+      setResponse(null)
+      setBusy(false)
+      setReadAs(null)
+    }
+  }
+
+  const clear = () => {
+    edit('')
+    setQueryInUrl(null)
+  }
+
   const pick = (q: string) => {
     setInput(q)
-    void run(q, true)
+    void run(q, 'submit')
     window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
     inputRef.current?.focus()
   }
@@ -204,27 +306,33 @@ export default function App() {
         <MathInput
           ref={inputRef}
           value={input}
-          onChange={(v) => {
-            setInput(v)
-            setErrorVisible(false)
-          }}
-          onSubmit={() => void run(input, true)}
+          onChange={edit}
+          onClear={clear}
+          onSubmit={() => void run(input, 'submit')}
           busy={busy}
+          readAs={input.trim() ? readAs : null}
         />
 
-        <div aria-live="polite" className="result-region">
-          {response && !response.ok && errorVisible && input.trim() && (
-            <div className="card error rise" role="alert">
-              <span className="error-icon" aria-hidden="true">
-                !
-              </span>
-              <p>
-                <strong>Can't solve that yet.</strong> {response.error}
-              </p>
-            </div>
-          )}
-          {solution && <SolutionView key={reveal.id} solution={solution} quiet={!reveal.animate} />}
-        </div>
+        {/* Read out new answers once, when they are asked for, rather than on every keystroke. */}
+        <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {announcement}
+        </p>
+
+        {response && !response.ok && error && input.trim() && (
+          <div key={error.id} className="card error rise" role={error.alert ? 'alert' : undefined}>
+            <span className="error-icon" aria-hidden="true">
+              !
+            </span>
+            <p>
+              <strong>Can't solve that yet.</strong> {response.error}
+            </p>
+          </div>
+        )}
+        {solution && (
+          <Suspense fallback={null}>
+            <SolutionView key={reveal.id} solution={solution} quiet={!reveal.animate} />
+          </Suspense>
+        )}
 
         {history.length > 0 && (
           <section className="card history rise" style={rise(3)} aria-labelledby="history-title">
@@ -284,14 +392,25 @@ export default function App() {
               <li>
                 Use a dot for decimals: <code>2.5</code>.
               </li>
+              <li>
+                Keyboard: press <kbd>/</kbd> to jump to the box and <kbd>Esc</kbd> to clear it.
+              </li>
             </ul>
           </details>
         </section>
       </main>
 
-      <footer className="footer">
-        <span>Runs entirely in your browser.</span>
-        <span>Exact answers where possible, decimals when not.</span>
+      <footer className="footer" aria-labelledby="about-title">
+        <h2 id="about-title" className="footer-title">
+          About
+        </h2>
+        <p>
+          Math Solver is free. It runs entirely in your browser, so nothing you type is sent anywhere, and it keeps
+          working offline once it has loaded.
+        </p>
+        <a className="footer-link" href={SOURCE_URL}>
+          Source code on GitHub
+        </a>
       </footer>
     </div>
   )

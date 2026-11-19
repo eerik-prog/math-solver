@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { solve } from '../engine'
+import { readAs } from '../worker/readAs'
 
 // The real client runs the engine in a Web Worker; jsdom has none, so solve inline.
 vi.mock('../solverClient', () => ({
@@ -11,6 +12,10 @@ vi.mock('../solverClient', () => ({
     solve(input: string) {
       return Promise.resolve(solve(input))
     }
+    readAs(input: string) {
+      return Promise.resolve(readAs(input))
+    }
+    warm() {}
   },
 }))
 

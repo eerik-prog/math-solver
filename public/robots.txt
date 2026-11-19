@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://eerik-prog.github.io/math-solver/sitemap.xml
