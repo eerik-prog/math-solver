@@ -30,7 +30,7 @@ describe('App', () => {
     fireEvent.submit(input.closest('form')!)
     expect(await screen.findByText('Solve for x')).toBeInTheDocument()
     expect(screen.getByText('Step-by-step')).toBeInTheDocument()
-    expect(screen.getByText('Subtract 3 from both sides')).toBeInTheDocument()
+    expect(screen.getByText(/^Subtract 3 from both sides/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy x = 4' })).toBeInTheDocument()
   })
 

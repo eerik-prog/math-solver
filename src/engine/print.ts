@@ -171,7 +171,9 @@ function joinFactors(fs: Expr[]): string {
     if (i > 0) {
       const prev = fs[i - 1]
       const needsDot = /^[0-9.]/.test(t) || (prev.kind === 'num' && t.startsWith('\\frac'))
-      out += needsDot ? ' \\cdot ' : t.startsWith('\\') ? ' ' : ''
+      // "\pi n" needs a space, or KaTeX reads it as the unknown command "\pin".
+      const afterCommand = /\\[a-zA-Z]+$/.test(out) && /^[a-zA-Z]/.test(t)
+      out += needsDot ? ' \\cdot ' : t.startsWith('\\') || afterCommand ? ' ' : ''
     }
     out += t
   })
@@ -195,7 +197,11 @@ function mulTex(factors: readonly Expr[]): string {
   if (c.d !== 1n) botFs.push({ kind: 'num', value: new Rational(c.d) })
   botFs.push(...bottom)
   // Keep "2x" style instead of "2·1" artefacts.
-  const topTex = topFs.length === 1 ? toTex(topFs[0]) : joinFactors(topFs)
+  const lone = topFs.length === 1 ? topFs[0] : null
+  // −(x + 1) and −(−5) keep their brackets.
+  const wrap =
+    !!lone && !!sign && botFs.length === 0 && (lone.kind === 'add' || (lone.kind === 'num' && lone.value.sign() < 0))
+  const topTex = lone ? (wrap ? `\\left(${toTex(lone)}\\right)` : toTex(lone)) : joinFactors(topFs)
   if (botFs.length === 0) return sign + topTex
   const botTex = botFs.length === 1 ? toTex(botFs[0]) : joinFactors(botFs)
   return `${sign}\\frac{${topTex}}{${botTex}}`
@@ -341,6 +347,29 @@ export function toText(e: Expr): string {
       return `${e.name}(${e.args.map(toText).join(', ')})`
     }
   }
+}
+
+const SUPERSCRIPT: Record<string, string> = {
+  '0': '⁰',
+  '1': '¹',
+  '2': '²',
+  '3': '³',
+  '4': '⁴',
+  '5': '⁵',
+  '6': '⁶',
+  '7': '⁷',
+  '8': '⁸',
+  '9': '⁹',
+}
+
+/** Plain text for use inside a sentence: √17, x², 2x·cos(x²), −3, π. */
+export function toPlain(e: Expr): string {
+  return toText(e)
+    .replace(/sqrt\(([^()]+)\)/g, (_, inner: string) => (/^[\w.]+$/.test(inner) ? `√${inner}` : `√(${inner})`))
+    .replace(/\^(\d+)(?![\d.])/g, (_, d: string) => [...d].map((c) => SUPERSCRIPT[c]).join(''))
+    .replace(/\*/g, '·')
+    .replace(/(^|[\s(,])-/g, '$1−')
+    .replace(/\bpi\b/g, 'π')
 }
 
 function textFactor(f: Expr): string {

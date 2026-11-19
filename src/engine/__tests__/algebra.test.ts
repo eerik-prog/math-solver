@@ -5,7 +5,7 @@ describe('arithmetic', () => {
   it('follows the order of operations step by step', () => {
     const s = ok('2 + 3 * 4')
     expect(s.answers[0].text).toBe('14')
-    expect(s.steps.map((st) => st.title)).toEqual(['Multiply: 3 × 4 = 12', 'Add: 2 + 12 = 14'])
+    expect(s.steps.map((st) => st.title)).toEqual(['Multiply before you add: 3 × 4 = 12', 'Add: 2 + 12 = 14'])
   })
 
   it('keeps fractions exact and gives decimals', () => {

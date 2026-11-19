@@ -5,7 +5,11 @@ describe('linear equations', () => {
   it('solves with textbook steps', () => {
     const s = ok('2x + 3 = 7')
     expect(s.answers.map((a) => a.text)).toEqual(['x = 2'])
-    expect(s.steps.map((st) => st.title)).toEqual(['Subtract 3 from both sides', 'Divide both sides by 2'])
+    expect(s.steps.map((st) => st.title)).toEqual([
+      'Subtract 3 from both sides. This leaves the x term on its own',
+      'Divide both sides by 2. This leaves x on its own',
+      'Check: put x = 2 back into the original equation. The left side comes out as 7, the same as the right side ✓',
+    ])
   })
 
   it('handles x on both sides and fractions', () => {

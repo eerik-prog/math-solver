@@ -48,15 +48,19 @@ function linearSystem(rows: Rational[][], vars: string[], problemTex: string): S
     return `${toTex(lhs)} &= ${toTex(num(r[n]))}`
   })
   steps.push({
-    title: 'Write every equation in standard form (variables on the left, numbers on the right)',
+    title: 'Line up the equations: letters on the left, plain numbers on the right',
     tex: `\\begin{aligned} ${standard.join(' \\\\ ')} \\end{aligned}`,
   })
-  steps.push({ title: 'Write the augmented matrix', tex: matrixTex(rows, 1) })
+  steps.push({
+    title: `Write just the numbers in a grid (a matrix). Each row is one equation. The columns are ${vars.join(', ')}, and the last column is the right side`,
+    tex: matrixTex(rows, 1),
+  })
   const { matrix, pivots, ops } = rref(rows, n, true)
   if (ops.length)
     steps.push({
-      title: 'Row-reduce (Gauss–Jordan elimination) until each variable stands alone',
-      substeps: ops.map((o) => ({ title: o.desc, tex: matrixTex(o.matrix, 1) })),
+      title:
+        'Change the rows one move at a time until each row has a single 1 on the left. Every move keeps the equations true (this is called elimination)',
+      substeps: ops.map((o) => ({ title: rowOpWords(o.desc), tex: matrixTex(o.matrix, 1) })),
     })
   const inconsistent = matrix.some((r) => r.slice(0, n).every((c) => c.isZero()) && !r[n].isZero())
   const answers: Answer[] = []
@@ -66,7 +70,7 @@ function linearSystem(rows: Rational[][], vars: string[], problemTex: string): S
     answers.push({ tex: '\\text{No solution (the equations are inconsistent)}', text: 'No solution' })
   } else if (pivots.length === n) {
     steps.push({
-      title: 'Read off the solution',
+      title: `Each row now says one letter equals a number. Read them off`,
       tex: vars.map((v, i) => `${v} = ${toTex(num(matrix[i][n]))}`).join(',\\quad '),
     })
     vars.forEach((v, i) => {
@@ -115,8 +119,11 @@ function substitutionSystem(diffs: Expr[], vars: string[], problemTex: string): 
       const w = vars.find((u) => u !== v)!
       const other = diffs[1 - ei]
       const substituted = simplify(substitute(other, v, expr))
-      steps.push({ title: `Solve equation ${ei + 1} for ${v}`, tex: `${v} = ${toTex(expr)}` })
-      steps.push({ title: `Substitute into equation ${2 - ei}`, tex: `${toTex(substituted)} = 0` })
+      steps.push({ title: `Get ${v} on its own in equation ${ei + 1}`, tex: `${v} = ${toTex(expr)}` })
+      steps.push({
+        title: `Put that in place of ${v} in equation ${2 - ei}. Now it only has one letter`,
+        tex: `${toTex(substituted)} = 0`,
+      })
       const sub1: Step[] = []
       const res = solveEq(substituted, num(0), w, sub1)
       steps.push({ title: `Solve for ${w}`, substeps: sub1 })
@@ -141,7 +148,10 @@ function substitutionSystem(diffs: Expr[], vars: string[], problemTex: string): 
         })
       }
       if (pairs.length)
-        steps.push({ title: `Substitute each value back to find ${v}`, tex: pairs.join(' \\quad\\text{and}\\quad ') })
+        steps.push({
+          title: `Put each value back into ${v} = … to find ${v}`,
+          tex: pairs.join(' \\quad\\text{and}\\quad '),
+        })
       if (!answers.length) answers.push({ tex: '\\text{No real solution}', text: 'No real solution' })
       return {
         kind: 'system',
@@ -154,4 +164,20 @@ function substitutionSystem(diffs: Expr[], vars: string[], problemTex: string): 
     }
   }
   throw new MathError('I could not isolate a variable in either equation to solve this system')
+}
+
+/** "R2 → R2 − 3·R1" in words: "Row 2: take away 3 × row 1". */
+function rowOpWords(desc: string): string {
+  let m = /^Swap R(\d+) and R(\d+)$/.exec(desc)
+  if (m) return `Swap row ${m[1]} and row ${m[2]}, so a non-zero number is in the right place`
+  m = /^R(\d+) → R\d+ ÷ (.+)$/.exec(desc)
+  if (m) return `Divide row ${m[1]} by ${m[2].replace(/^\(?-/, (t) => t.replace('-', '−'))}, to make a 1`
+  m = /^R(\d+) → R\d+ ([−+]) (?:(.+)·)?R(\d+)$/.exec(desc)
+  if (m) {
+    const times = m[3] ? `${m[3]} × ` : ''
+    return m[2] === '−'
+      ? `Row ${m[1]}: subtract ${times}row ${m[4]}, to make a 0`
+      : `Row ${m[1]}: add ${times}row ${m[4]}, to make a 0`
+  }
+  return desc
 }
