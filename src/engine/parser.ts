@@ -1,4 +1,5 @@
 import { type Expr, E, INF, PI, div, fn, frac, mul, neg, num, pow, sym } from './expr'
+import { markDecimal, markPercent } from './literals'
 import { MathError, Rational } from './rational'
 
 /**
@@ -264,7 +265,7 @@ class Parser {
         e = mul(e, PI, pow(num(180), -1))
       } else if (this.isOp('%')) {
         this.i++
-        e = mul(e, frac(1, 100))
+        e = mul(e, markPercent(frac(1, 100)))
       } else return e
     }
   }
@@ -274,7 +275,8 @@ class Parser {
     if (!tk) throw new MathError('The expression ends too early')
     if (tk.t === 'num') {
       this.i++
-      return num(Rational.parse(tk.v))
+      const n = num(Rational.parse(tk.v))
+      return tk.v.includes('.') ? markDecimal(n) : n
     }
     if (tk.t === 'op') {
       if (tk.v === '(') {

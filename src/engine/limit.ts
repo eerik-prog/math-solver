@@ -1,9 +1,10 @@
 import { differentiate } from './diff'
-import { type Expr, contains, freeSymbols, isSym, mul, num, pow, substitute } from './expr'
+import { type Expr, contains, freeSymbols, isSym, mul, num, pow, substitute, sym } from './expr'
 import { identify } from './identify'
 import { compile } from './numeric'
-import { polyFromExpr, ratFromExpr } from './poly'
-import { formatNumber, toTex, toText } from './print'
+import { literalTex } from './arithmetic'
+import { type Poly, polyFromExpr, ratFromExpr } from './poly'
+import { formatNumber, toPlain, toTex, toText } from './print'
 import { MathError } from './rational'
 import { simplify } from './simplify'
 import type { Solution, Step } from './types'
@@ -100,6 +101,12 @@ export function solveLimit(f0: Expr, x: string, a: Expr, side: '' | '+' | '-' = 
   else numeric = combine(oneSided(fn_, aNum, -1), oneSided(fn_, aNum, 1))
 
   let exact: LimitValue | null = null
+  const aSay = toPlain(a)
+  /** f with x replaced by the limit point, written out before working it out. */
+  const putIn = (g: Expr) => {
+    const raw = substitute(g, x, a)
+    return literalTex(raw, { stack: true }) ?? toTex(raw)
+  }
 
   if (!atInf) {
     const direct = safeSubstitute(f, x, a)
@@ -110,53 +117,141 @@ export function solveLimit(f0: Expr, x: string, a: Expr, side: '' | '+' | '-' = 
       numeric.kind === 'finite' &&
       Math.abs(dv - numeric.value) < 1e-5 * Math.max(1, Math.abs(dv))
     ) {
+      const shown = putIn(f)
       steps.push({
-        title: `The function is continuous at ${x} = ${toTex(a)}, so substitute directly`,
-        tex: `${L} ${toTex(f)} = ${toTex(direct)}`,
+        title: `Try putting ${x} = ${aSay} straight into the function. It gives an ordinary number, so that number is the limit`,
+        tex: `${L} ${toTex(f)} = ${shown === toTex(direct) ? '' : `${shown} = `}${toTex(direct)}`,
       })
       exact = { kind: 'finite', value: dv, exact: direct }
+    } else {
+      // Say why putting the number in doesn't work.
+      const fr = fraction(f)
+      const top = fr && safeSubstitute(fr.top, x, a)
+      const bottom = fr && safeSubstitute(fr.bottom, x, a)
+      if (fr && top && bottom) {
+        const tv = compile(top, '_')(0)
+        const bv = compile(bottom, '_')(0)
+        const frac = `\\frac{${putIn(fr.top)}}{${putIn(fr.bottom)}}`
+        if (Math.abs(bv) < 1e-12 && Math.abs(tv) < 1e-12)
+          steps.push({
+            title: `Try putting ${x} = ${aSay} straight in. The top and the bottom both become 0, and 0/0 doesn't tell us the answer. We need another way`,
+            tex: `${frac} = \\frac{0}{0}`,
+          })
+        else if (Math.abs(bv) < 1e-12 && Number.isFinite(tv)) {
+          const end = `\\frac{${toTex(top)}}{0}`
+          steps.push({
+            title: `Try putting ${x} = ${aSay} straight in. The bottom becomes 0 but the top doesn't. Dividing by a number very close to 0 gives a huge number`,
+            tex: frac === end ? frac : `${frac} = ${end}`,
+          })
+        }
+      }
     }
   }
 
   if (!exact) {
     // Rational functions: cancel common factors (finite a) or compare degrees (a = ±∞).
     const rf = ratFromExpr(f, x)
-    if (rf && fraction(f)) {
+    const fr = fraction(f)
+    if (rf && fr) {
       const reduced = simplify(mul(rf.num.toExpr(x), pow(rf.den.toExpr(x), -1)))
       if (atInf) {
         const dn = rf.num.degree
         const dd = rf.den.degree
-        steps.push({
-          title: `Divide the numerator and denominator by ${x}^${dd}, the highest power in the denominator; terms with ${x} in the denominator go to 0`,
-        })
-        if (dn < dd) exact = { kind: 'finite', value: 0, exact: num(0) }
-        else if (dn === dd) {
+        const X = sym(x)
+        const xd = toPlain(simplify(pow(X, dd)))
+        const divided = (p: Poly) =>
+          p.c
+            .map((c, i) => (c.isZero() ? null : simplify(mul(num(c), pow(X, i - dd)))))
+            .filter((t): t is Expr => t !== null)
+            .reverse()
+        const sumTex = (ts: Expr[]) => (ts.length ? toTex(ts.length === 1 ? ts[0] : { kind: 'add', terms: ts }) : '0')
+        // Use the fraction as written (not rescaled), so the numbers match what was typed.
+        const P0 = polyFromExpr(fr.top, x) ?? rf.num
+        const Q0 = polyFromExpr(fr.bottom, x) ?? rf.den
+        const topTerms = divided(P0)
+        const botTerms = divided(Q0)
+        if (dd > 0) {
+          steps.push({
+            title: `The highest power of ${x} on the bottom is ${xd}. Divide every term on the top and the bottom by ${xd}`,
+            tex: `${L} \\frac{${sumTex(topTerms)}}{${sumTex(botTerms)}}`,
+          })
+          const vanish = (ts: Expr[]) => ts.map((t) => (contains(t, x) && polyFromExpr(t, x) === null ? num(0) : t))
+          if (dn <= dd)
+            steps.push({
+              title: `As ${x} gets huge, a number divided by a power of ${x} gets closer and closer to 0. So those terms become 0`,
+              tex: `\\frac{${sumTex(vanish(topTerms))}}{${sumTex(vanish(botTerms))}}`,
+            })
+        }
+        if (dn < dd) {
+          exact = { kind: 'finite', value: 0, exact: num(0) }
+          steps.push({
+            title: 'The top goes to 0 and the bottom does not, so the fraction goes to 0',
+            tex: `${L} ${toTex(f)} = 0`,
+          })
+        } else if (dn === dd) {
           const r = rf.num.lead.div(rf.den.lead)
           exact = { kind: 'finite', value: r.toNumber(), exact: num(r) }
+          const ratio = `\\frac{${toTex(num(P0.lead))}}{${toTex(num(Q0.lead))}}`
           steps.push({
-            title: 'The degrees are equal, so the limit is the ratio of the leading coefficients',
-            tex: `\\frac{${toTex(num(rf.num.lead))}}{${toTex(num(rf.den.lead))}} = ${toTex(num(r))}`,
+            title: 'What is left is the number in front of the highest power on top, divided by the one on the bottom',
+            tex: `${L} ${toTex(f)} = ${ratio === toTex(num(r)) ? '' : `${ratio} = `}${toTex(num(r))}`,
           })
         } else {
-          const s = rf.num.lead.div(rf.den.lead).sign() * ((dn - dd) % 2 === 1 ? infSign : 1)
-          exact = { kind: 'inf', sign: s > 0 ? 1 : -1 }
-          steps.push({ title: 'The numerator has the higher degree, so the expression grows without bound' })
+          const sgn = rf.num.lead.div(rf.den.lead).sign() * ((dn - dd) % 2 === 1 ? infSign : 1)
+          exact = { kind: 'inf', sign: sgn > 0 ? 1 : -1 }
+          steps.push({
+            title: `The top still has ${x} in it after dividing, so it keeps growing while the bottom settles down. The fraction grows without limit`,
+            tex: `${L} ${toTex(f)} = ${sgn > 0 ? '\\infty' : '-\\infty'}`,
+          })
         }
-        if (dn < dd) steps.push({ title: 'The denominator has the higher degree, so the fraction goes to 0' })
-      } else if (rf.den.eval(numValue(a)).isZero()) {
-        steps.push({
-          title:
-            'After cancelling common factors the denominator is still zero while the numerator is not, so the function grows without bound here. Check each side',
-          tex: `${L} ${toTex(f)} = ${L} ${toTex(reduced)}`,
-        })
-        exact = numeric
       } else {
-        const v = rf.num.eval(numValue(a)).div(rf.den.eval(numValue(a)))
-        steps.push({
-          title: 'Cancel common factors, then substitute',
-          tex: `${L} ${toTex(f)} = ${L} ${toTex(reduced)} = ${toTex(num(v))}`,
-        })
-        exact = { kind: 'finite', value: v.toNumber(), exact: num(v) }
+        const P = polyFromExpr(fr.top, x)
+        const Q = polyFromExpr(fr.bottom, x)
+        const g = P && Q ? P.gcd(Q) : null
+        if (P && Q && g && g.degree >= 1) {
+          steps.push({
+            title: `Factor the top and the bottom. They share the factor (${toPlain(g.toExpr(x))})`,
+            tex: `${L} \\frac{${factorPair(g, P.divmod(g).q, x)}}{${factorPair(g, Q.divmod(g).q, x)}}`,
+          })
+          steps.push({
+            title: `Cancel (${toPlain(g.toExpr(x))}) from the top and the bottom. That is allowed because ${x} only gets close to ${aSay}, it is never exactly ${aSay}`,
+            tex: `${L} ${toTex(reduced)}`,
+          })
+        }
+        if (rf.den.eval(numValue(a)).isZero()) {
+          const l = oneSided(fn_, aNum, -1)
+          const r = oneSided(fn_, aNum, 1)
+          if (side === '')
+            steps.push({
+              title: `So near ${x} = ${aSay} the function shoots off towards ∞ or −∞. Check which way it goes on each side`,
+              tex: `${limTex(x, aTex, '-')} ${toTex(f)} = ${valueTex(l)},\\quad ${limTex(x, aTex, '+')} ${toTex(f)} = ${valueTex(r)}`,
+            })
+          else {
+            const one = side === '+' ? r : l
+            steps.push({
+              title: `Coming from the ${side === '+' ? 'right' : 'left'}, ${x} is just ${side === '+' ? 'above' : 'below'} ${aSay}. The function shoots off towards ${valueTex(one) === '\\infty' ? '∞' : '−∞'} there`,
+              tex: `${L} ${toTex(f)} = ${valueTex(one)}`,
+            })
+          }
+          if (side === '') {
+            const both = combine(l, r)
+            steps.push({
+              title:
+                both.kind === 'dne'
+                  ? 'The two sides go in different directions, so the limit does not exist'
+                  : 'Both sides go the same way, so that is the limit',
+            })
+          }
+          exact = numeric
+        } else {
+          const v = rf.num.eval(numValue(a)).div(rf.den.eval(numValue(a)))
+          const shown = putIn(reduced)
+          steps.push({
+            title: `Now put ${x} = ${aSay} in`,
+            tex: `${L} ${toTex(reduced)} = ${shown === toTex(num(v)) ? '' : `${shown} = `}${toTex(num(v))}`,
+          })
+          exact = { kind: 'finite', value: v.toNumber(), exact: num(v) }
+        }
       }
     }
   }
@@ -180,16 +275,31 @@ export function solveLimit(f0: Expr, x: string, a: Expr, side: '' | '+' | '-' = 
       } catch {
         break
       }
+      const form = zeroZero ? '0/0' : '∞/∞'
       steps.push({
-        title: `${zeroZero ? '0/0' : '∞/∞'} form: apply L'Hôpital's rule (differentiate the top and bottom separately)`,
-        tex: `${L} \\frac{${toTex(cur.top)}}{${toTex(cur.bottom)}} = ${L} \\frac{${toTex(top)}}{${toTex(bottom)}}`,
+        title:
+          round === 1
+            ? `This is a ${form} form, so use L'Hôpital's rule: take the derivative of the top and of the bottom separately, then try again`
+            : `It is still ${form}, so use L'Hôpital's rule again`,
+        tex: `${L} \\frac{${toTex(cur.top)}}{${toTex(cur.bottom)}} = ${L} \\frac{\\frac{d}{d${x}}\\left[${toTex(cur.top)}\\right]}{\\frac{d}{d${x}}\\left[${toTex(cur.bottom)}\\right]}`,
+      })
+      steps.push({
+        title: 'The derivative of the top',
+        tex: `\\frac{d}{d${x}}\\left[${toTex(cur.top)}\\right] = ${toTex(top)}`,
+      })
+      steps.push({
+        title: 'The derivative of the bottom',
+        tex: `\\frac{d}{d${x}}\\left[${toTex(cur.bottom)}\\right] = ${toTex(bottom)}`,
       })
       const q = simplify(mul(top, pow(bottom, -1)))
       if (!atInf) {
         const direct = safeSubstitute(q, x, a)
         const v = direct ? compile(direct, '_')(0) : NaN
         if (direct && Number.isFinite(v)) {
-          steps.push({ title: 'Now substitute directly', tex: `= ${toTex(direct)}` })
+          steps.push({
+            title: `Now put ${x} = ${aSay} into the new fraction`,
+            tex: `${L} \\frac{${toTex(top)}}{${toTex(bottom)}} = \\frac{${putIn(top)}}{${putIn(bottom)}} = ${toTex(direct)}`,
+          })
           exact = { kind: 'finite', value: v, exact: direct }
           break
         }
@@ -197,7 +307,10 @@ export function solveLimit(f0: Expr, x: string, a: Expr, side: '' | '+' | '-' = 
         const p = polyFromExpr(q, x)
         if (p && p.isConstant()) {
           exact = { kind: 'finite', value: p.coef(0).toNumber(), exact: num(p.coef(0)) }
-          steps.push({ title: 'The expression is now constant', tex: `= ${toTex(num(p.coef(0)))}` })
+          steps.push({
+            title: `The ${x}'s are gone and a plain number is left. That is the limit`,
+            tex: `= ${toTex(num(p.coef(0)))}`,
+          })
           break
         }
       }
@@ -216,15 +329,16 @@ export function solveLimit(f0: Expr, x: string, a: Expr, side: '' | '+' | '-' = 
       const l = oneSided(fn_, aNum, -1)
       const r = oneSided(fn_, aNum, 1)
       steps.push({
-        title: 'Compare the one-sided limits',
+        title: `Look at each side of ${x} = ${aSay}: coming from the left and coming from the right`,
         tex: `${limTex(x, aTex, '-')} = ${valueTex(l)},\\quad ${limTex(x, aTex, '+')} = ${valueTex(r)}`,
       })
       if (l.kind !== 'dne' || r.kind !== 'dne')
         notes.push('The left and right limits differ, so the two-sided limit does not exist.')
     } else {
       steps.push({
-        title: 'Evaluate the function closer and closer to the limit point',
+        title: `There is no exact method here, so work out the function for values of ${x} closer and closer to ${atInf ? (infSign > 0 ? '∞' : '−∞') : aSay}, and watch where the answers head`,
         tex: `${L} ${toTex(f)} = ${valueTex(numeric)}`,
+        substeps: valueTable(fn_, x, atInf ? infSign * Infinity : aNum, side),
       })
       if (numeric.kind === 'finite' && !numeric.exact) notes.push('This value was estimated numerically.')
     }
@@ -256,6 +370,34 @@ export function solveLimit(f0: Expr, x: string, a: Expr, side: '' | '+' | '-' = 
         }
       : undefined,
   }
+}
+
+/** A few values of the function as x gets closer to the point, to show the trend. */
+function valueTable(f: (v: number) => number, x: string, a: number, side: '' | '+' | '-'): Step[] {
+  const dir = side === '-' ? -1 : 1
+  const xs = Number.isFinite(a)
+    ? [0.1, 0.01, 0.001, 0.0001].map((h) => a + dir * h)
+    : [10, 100, 1000, 10000].map((k) => Math.sign(a) * k)
+  return xs
+    .map((v) => ({ v, y: f(v) }))
+    .filter(({ y }) => Number.isFinite(y))
+    .map(({ v, y }) => ({
+      title: `${x} = ${formatNumber(v, 6)}`,
+      tex: `f(${formatNumber(v, 6)}) \\approx ${formatNumber(y, 8)}`,
+    }))
+}
+
+/** "(x − 2)(x + 2)" with the shared factor first. */
+function factorPair(g: Poly, rest: Poly, x: string): string {
+  const multi = (p: Poly) => p.c.filter((c) => !c.isZero()).length > 1
+  const gt = toTex(g.toExpr(x))
+  const gw = multi(g) ? `\\left(${gt}\\right)` : gt
+  if (rest.isConstant()) {
+    const c = rest.coef(0)
+    return c.isOne() ? gt : `${toTex(num(c))}${gw}`
+  }
+  const rt = toTex(rest.toExpr(x))
+  return `${gw}${multi(rest) ? `\\left(${rt}\\right)` : rt}`
 }
 
 function numValue(a: Expr) {

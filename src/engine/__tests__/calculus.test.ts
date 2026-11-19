@@ -60,9 +60,9 @@ describe('derivatives', () => {
 
   it('explains the rules used', () => {
     const s = ok('derivative of x^2 sin(x)')
-    expect(s.steps[0].title).toMatch(/Product rule/)
-    expect(ok('d/dx sin(x^2)').steps[0].title).toMatch(/Chain rule/)
-    expect(ok('d/dx x/(x+1)').steps[0].title).toMatch(/Quotient rule/)
+    expect(s.steps[0].title).toMatch(/product rule/)
+    expect(ok('d/dx sin(x^2)').steps[0].title).toMatch(/chain rule/)
+    expect(ok('d/dx x/(x+1)').steps[0].title).toMatch(/quotient rule/)
   })
 
   it('supports higher derivatives, other variables and notations', () => {

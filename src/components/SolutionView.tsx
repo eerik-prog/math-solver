@@ -14,7 +14,7 @@ function StepItem({ step, depth, index }: { step: Step; depth: number; index: nu
         </div>
       )}
       {step.substeps && step.substeps.length > 0 && (
-        <details className="substeps" open={depth === 0 && step.substeps.length <= 4}>
+        <details className="substeps" open={depth === 0 && step.substeps.length <= 6}>
           <summary>{depth === 0 ? 'How?' : 'More detail'}</summary>
           <ol>
             {step.substeps.map((s, i) => (
